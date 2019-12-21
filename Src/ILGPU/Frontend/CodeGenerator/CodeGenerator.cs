@@ -101,7 +101,7 @@ namespace ILGPU.Frontend
                 var paramRef = new VariableRef(0, VariableRefType.Argument);
                 EntryBlock.SetValue(
                     paramRef,
-                    Builder.InsertParameter(declaringType, "this"));
+                    Builder.Parameters.InsertParameter(declaringType, "this"));
                 variableTypes[paramRef] = (declaringType, ConvertFlags.None);
             }
 
@@ -111,7 +111,7 @@ namespace ILGPU.Frontend
             {
                 var parameter = methodParameters[i];
                 var paramType = builder.CreateType(parameter.ParameterType);
-                Value ssaValue = Builder.AddParameter(paramType, parameter.Name);
+                Value ssaValue = Builder.Parameters.AddParameter(paramType, parameter.Name);
                 var argRef = new VariableRef(i + parameterOffset, VariableRefType.Argument);
                 if (variables.Contains(argRef))
                 {

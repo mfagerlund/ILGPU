@@ -55,12 +55,6 @@ namespace ILGPU.Backends.OpenCL
             // Parameters are already assigned to variables
         }
 
-        /// <summary cref="IValueVisitor.Visit(PhiValue)"/>
-        public void Visit(PhiValue phiValue)
-        {
-            // Phi values are already assigned to variables
-        }
-
         /// <summary cref="IValueVisitor.Visit(UnaryArithmeticValue)"/>
         public void Visit(UnaryArithmeticValue value)
         {

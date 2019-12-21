@@ -37,18 +37,6 @@ namespace ILGPU.IR.Construction
         }
 
         /// <summary>
-        /// Creates a new phi node builder.
-        /// </summary>
-        /// <param name="type">The given node type.</param>
-        /// <returns>The created phi builder.</returns>
-        public PhiValue.Builder CreatePhi(TypeNode type)
-        {
-            Debug.Assert(type != null, "Invalid type node");
-            var phiNode = CreatePhiValue(new PhiValue(BasicBlock, type));
-            return new PhiValue.Builder(phiNode);
-        }
-
-        /// <summary>
         /// Declares a method.
         /// </summary>
         /// <param name="declaration">The method declaration.</param>

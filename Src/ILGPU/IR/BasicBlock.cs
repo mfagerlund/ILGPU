@@ -26,7 +26,10 @@ namespace ILGPU.IR
     /// </summary>
     [SuppressMessage("Microsoft.Naming", "CA1710: IdentifiersShouldHaveCorrectSuffix",
         Justification = "This is the correct name of the current entity")]
-    public sealed partial class BasicBlock : Node, IReadOnlyCollection<BasicBlock.ValueEntry>
+    public sealed partial class BasicBlock :
+        Node,
+        IReadOnlyCollection<BasicBlock.ValueEntry>,
+        IParameterContainer
     {
         #region Nested Types
 
@@ -174,6 +177,7 @@ namespace ILGPU.IR
             Method = method;
             Name = name ?? "BB";
             Id = nodeId;
+            Parameters = ParameterCollection.Create();
         }
 
         #endregion
@@ -198,8 +202,7 @@ namespace ILGPU.IR
         /// <summary>
         /// Returns all successor nodes.
         /// </summary>
-        public ImmutableArray<BasicBlock> Successors =>
-            CompactTerminator().Targets;
+        public ImmutableArray<BasicBlock> Successors => CompactTerminator().Targets;
 
         /// <summary>
         /// Returns the number of detected blocks.
@@ -213,6 +216,15 @@ namespace ILGPU.IR
         /// <returns>The resolved value reference.</returns>
         public ValueReference this[int index] => values[index];
 
+        /// <summary>
+        /// Returns all attached parameters.
+        /// </summary>
+        public ParameterCollection Parameters { get; }
+
+        /// <summary>
+        /// Returns the number of attached parameters.
+        /// </summary>
+        public int NumParameters => Parameters.Count;
         #endregion
 
         #region Methods
@@ -266,6 +278,18 @@ namespace ILGPU.IR
         }
 
         /// <summary>
+        /// Tries to return the current builder (if any).
+        /// </summary>
+        /// <param name="resolvedBuilder">The resolved bloc builder.</param>
+        /// <returns>True, if there was a builder.</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool TryGetBuilder(out Builder resolvedBuilder)
+        {
+            resolvedBuilder = builder;
+            return resolvedBuilder != null;
+        }
+
+        /// <summary>
         /// Releases the given builder.
         /// </summary>
         /// <param name="otherBuilder">The builder to release.</param>
@@ -311,7 +335,14 @@ namespace ILGPU.IR
                 throw new ArgumentNullException(nameof(textWriter));
 
             textWriter.Write(ToString());
-            textWriter.WriteLine(":");
+            textWriter.Write('(');
+            for (int i = 0, e = NumParameters; i < e; ++i)
+            {
+                textWriter.Write(Parameters[i].ToParameterString());
+                if (i + 1 < e)
+                    textWriter.Write(", ");
+            }
+            textWriter.WriteLine("):");
             foreach (Value value in this)
             {
                 textWriter.Write("\t");

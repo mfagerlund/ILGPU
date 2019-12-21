@@ -27,12 +27,6 @@ namespace ILGPU.IR.Values
         /// <summary>
         /// Visits the node.
         /// </summary>
-        /// <param name="phiValue">The node.</param>
-        void Visit(PhiValue phiValue);
-
-        /// <summary>
-        /// Visits the node.
-        /// </summary>
         /// <param name="parameter">The node.</param>
         void Visit(Parameter parameter);
 

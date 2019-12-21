@@ -27,6 +27,43 @@ namespace ILGPU.IR
     partial class BasicBlock
     {
         /// <summary>
+        /// A parameter builder for use in combination with the
+        /// <see cref="ParameterCollection.Builder{TParameterBuilder}"/> object.
+        /// </summary>
+        public readonly struct ParameterBuilder : ParameterCollection.IParameterBuilder
+        {
+            /// <summary>
+            /// Constructs a new parameter builder.
+            /// </summary>
+            /// <param name="builder">The parent builder.</param>
+            public ParameterBuilder(Builder builder)
+            {
+                Debug.Assert(builder != null, "Invalid builder");
+                Builder = builder;
+            }
+
+            /// <summary>
+            /// Returns the current basic block.
+            /// </summary>
+            public Builder Builder { get; }
+
+            /// <summary cref="ParameterCollection.IParameterBuilder.Add(Parameter)"/>
+            public void Add(Parameter parameter) => parameter.BasicBlock = Builder.BasicBlock;
+
+            /// <summary cref="ParameterCollection.IParameterBuilder.Remove(Parameter)"/>
+            public void Remove(Parameter parameter) => parameter.BasicBlock = null;
+
+            /// <summary cref="ParameterCollection.IParameterBuilder.CreateParameter(TypeNode, string)"/>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public Parameter CreateParameter(TypeNode type, string name)
+            {
+                var param = new Parameter(Builder.BasicBlock, type, name);
+                Builder.Context.Create(param);
+                return param;
+            }
+        }
+
+        /// <summary>
         /// Represents a basic block builder.
         /// </summary>
         [SuppressMessage("Microsoft.Naming", "CA1710: IdentifiersShouldHaveCorrectSuffix",
@@ -62,9 +99,11 @@ namespace ILGPU.IR
                 Debug.Assert(block != null, "Invalid block");
                 MethodBuilder = methodBuilder;
 
+                Parameters = block.Parameters.ToBuilder(new ParameterBuilder(this));
+
                 values = block.values;
                 insertPosition = Count;
-                block.CompactTerminator();
+                Terminator = block.CompactTerminator();
             }
 
             #endregion
@@ -75,6 +114,11 @@ namespace ILGPU.IR
             /// Returns the parent function builder.
             /// </summary>
             public Method.Builder MethodBuilder { get; }
+
+            /// <summary>
+            /// Returns the current parameter builder.
+            /// </summary>
+            public ParameterCollection.Builder<ParameterBuilder> Parameters { get; }
 
             /// <summary>
             /// Gets or sets the current terminator.
@@ -172,6 +216,7 @@ namespace ILGPU.IR
             {
                 Debug.Assert(value != null, "Invalid value");
                 Debug.Assert(value.BasicBlock == BasicBlock, "Invalid block association");
+                Debug.Assert(!(value is Parameter), "Invalid parameter to add");
 
                 if (insertPosition < Count)
                     Values.Insert(insertPosition, value);
@@ -219,7 +264,9 @@ namespace ILGPU.IR
             /// Applies all scheduled removal operations by adding them to
             /// the given <paramref name="targetCollection"/>.
             /// </summary>
-            /// <param name="targetCollection">The target collection to wich all elements will be appended.</param>
+            /// <param name="targetCollection">
+            /// The target collection to which all elements will be appended.
+            /// </param>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private void PerformRemoval<TCollection>(TCollection targetCollection)
                 where TCollection : ICollection<ValueReference>
@@ -233,38 +280,6 @@ namespace ILGPU.IR
                 }
 
                 toRemove.Clear();
-            }
-
-            /// <summary>
-            /// Updates the phi values in the supplied blocks to expect the new block id
-            /// </summary>
-            /// <param name="successors">The blocks containing phi values to be updated</param>
-            /// <param name="oldBlockId">The previous block id</param>
-            /// <param name="newBlockId">The replacement block id</param>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private void RemapPhiArguments(IEnumerable<BasicBlock> successors, NodeId oldBlockId, NodeId newBlockId)
-            {
-                foreach (var successor in successors)
-                {
-                    foreach (Value value in successor)
-                    {
-                        if (value is PhiValue phiValue)
-                        {
-                            var replacementPhiValue = new PhiValue(successor, value.Type);
-                            MethodBuilder.Create(replacementPhiValue);
-                            var phiBuilder = new PhiValue.Builder(replacementPhiValue);
-
-                            for (int i = 0, e = phiValue.Nodes.Length; i < e; ++i)
-                            {
-                                var replacementBlockId = phiValue.NodeBlockIds[i];
-                                if (replacementBlockId == oldBlockId)
-                                    replacementBlockId = newBlockId;
-                                phiBuilder.AddArgument(replacementBlockId, phiValue.Nodes[i]);
-                            }
-                            phiValue.Replace(phiBuilder.Seal());
-                        }
-                    }
-                }
             }
 
             /// <summary>
@@ -373,18 +388,24 @@ namespace ILGPU.IR
                 Terminator = null;
                 CreateUnconditionalBranch(tempBlock.BasicBlock);
 
-                // Update phi blocks
-                RemapPhiArguments(tempBlock.BasicBlock.Successors, BasicBlock.Id, tempBlock.BasicBlock.Id);
-
                 return tempBlock;
             }
+
+            /// <summary>
+            /// Merges the given block into the current one while merging all parameters.
+            /// </summary>
+            /// <param name="other">The other block to merge.</param>
+            public void MergeBlock(BasicBlock other) => MergeBlock(other, true);
 
             /// <summary>
             /// Merges the given block into the current one.
             /// </summary>
             /// <param name="other">The other block to merge.</param>
+            /// <param name="mergeParameters">
+            /// True, if the parameters of the other block should be merged with the current parameters.
+            /// </param>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void MergeBlock(BasicBlock other)
+            public void MergeBlock(BasicBlock other, bool mergeParameters)
             {
                 Debug.Assert(other != null, "Invalid other block");
                 Debug.Assert(other != BasicBlock, "Invalid block association");
@@ -401,12 +422,10 @@ namespace ILGPU.IR
                     movedValue.BasicBlock = BasicBlock;
                 }
                 otherBuilder.Clear();
+                insertPosition = Count;
 
                 // Wire terminators
                 Terminator = other.Terminator;
-
-                // Update phi blocks
-                RemapPhiArguments(other.Successors, other.Id, BasicBlock.Id);
             }
 
             /// <summary>
@@ -420,7 +439,9 @@ namespace ILGPU.IR
                 Debug.Assert(value != null, "Invalid value");
                 Debug.Assert(value.BasicBlock == BasicBlock, "Invalid value method");
                 Debug.Assert(implementationMethod != null, "Invalid method");
-                Debug.Assert(BasicBlock.Method != implementationMethod, "Cannot introduce recurisve methods");
+                Debug.Assert(
+                    BasicBlock.Method != implementationMethod,
+                    "Cannot introduce recursive methods");
 
                 var call = CreateCall(implementationMethod, value.Nodes);
                 value.Replace(call);
@@ -496,6 +517,10 @@ namespace ILGPU.IR
             {
                 if (disposing)
                 {
+                    // Dispose the parameter builder
+                    Parameters.Dispose();
+
+                    // Perform removal operations and release the builder
                     PerformRemoval();
                     BasicBlock.ReleaseBuilder(this);
                 }

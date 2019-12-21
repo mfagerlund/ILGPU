@@ -16,7 +16,6 @@ using ILGPU.IR.Types;
 using ILGPU.IR.Values;
 using ILGPU.Util;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -26,13 +25,51 @@ namespace ILGPU.IR
     partial class Method
     {
         /// <summary>
+        /// A parameter builder for use in combination with the
+        /// <see cref="ParameterCollection.Builder{TParameterBuilder}"/> object.
+        /// </summary>
+        public readonly struct ParameterBuilder : ParameterCollection.IParameterBuilder
+        {
+            /// <summary>
+            /// Constructs a new parameter builder.
+            /// </summary>
+            /// <param name="builder">The parent builder.</param>
+            public ParameterBuilder(Builder builder)
+            {
+                Debug.Assert(builder != null, "Invalid builder");
+                Builder = builder;
+            }
+
+            /// <summary>
+            /// Returns the current basic block.
+            /// </summary>
+            public Builder Builder { get; }
+
+            /// <summary cref="ParameterCollection.IParameterBuilder.Add(Parameter)"/>
+            public void Add(Parameter parameter) { }
+
+            /// <summary cref="ParameterCollection.IParameterBuilder.Remove(Parameter)"/>
+            public void Remove(Parameter parameter) { }
+
+            /// <summary cref="ParameterCollection.IParameterBuilder.CreateParameter(TypeNode, string)"/>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public Parameter CreateParameter(TypeNode type, string name)
+            {
+                var param = new Parameter(Builder.Method, type, name)
+                {
+                    SequencePoint = Builder.SequencePoint
+                };
+                Builder.Context.Create(param);
+                return param;
+            }
+        }
+
+        /// <summary>
         /// A builder to build methods.
         /// </summary>
         public sealed class Builder : DisposeBase, IMethodMappingObject
         {
             #region Instance
-
-            private readonly ImmutableArray<Parameter>.Builder parameters;
 
             /// <summary>
             /// All created basic block builders.
@@ -47,7 +84,7 @@ namespace ILGPU.IR
             internal Builder(Method method)
             {
                 Method = method;
-                parameters = method.parameters.ToBuilder();
+                Parameters = method.Parameters.ToBuilder(new ParameterBuilder(this));
                 EnableDebugInformation = Context.HasFlags(
                     ContextFlags.EnableDebugInformation);
             }
@@ -91,11 +128,9 @@ namespace ILGPU.IR
             public MethodBase Source => Method.Source;
 
             /// <summary>
-            /// Returns the parameter with the given index.
+            /// Returns the current parameter builder.
             /// </summary>
-            /// <param name="index">The parameter index.</param>
-            /// <returns>The resolved parameter.</returns>
-            public Parameter this[int index] => parameters[index];
+            public ParameterCollection.Builder<ParameterBuilder> Parameters { get; }
 
             /// <summary>
             /// Returns the associated basic block builder.
@@ -116,11 +151,6 @@ namespace ILGPU.IR
                     return basicBlockBuilder;
                 }
             }
-
-            /// <summary>
-            /// Returns the number of parameters.
-            /// </summary>
-            public int NumParams => parameters.Count;
 
             /// <summary>
             /// Gets or sets the current sequence point (if any).
@@ -195,68 +225,6 @@ namespace ILGPU.IR
                     parameterMapping,
                     scope,
                     methodMapping);
-            }
-
-            /// <summary>
-            /// Adds a new parameter to the encapsulated function.
-            /// </summary>
-            /// <param name="type">The parameter type.</param>
-            /// <returns>The created parameter.</returns>
-            public Parameter AddParameter(TypeNode type)
-            {
-                return AddParameter(type, null);
-            }
-
-            /// <summary>
-            /// Adds a new parameter to the encapsulated function.
-            /// </summary>
-            /// <param name="type">The parameter type.</param>
-            /// <param name="name">The parameter name (for debugging purposes).</param>
-            /// <returns>The created parameter.</returns>
-            public Parameter AddParameter(TypeNode type, string name)
-            {
-                var param = CreateParam(type, name);
-                parameters.Add(param);
-                return param;
-            }
-
-            /// <summary>
-            /// Inserts a new parameter to the encapsulated function at the beginning.
-            /// </summary>
-            /// <param name="type">The parameter type.</param>
-            /// <returns>The created parameter.</returns>
-            public Parameter InsertParameter(TypeNode type)
-            {
-                return InsertParameter(type, null);
-            }
-
-            /// <summary>
-            /// Inserts a new parameter to the encapsulated function at the beginning.
-            /// </summary>
-            /// <param name="type">The parameter type.</param>
-            /// <param name="name">The parameter name (for debugging purposes).</param>
-            /// <returns>The created parameter.</returns>
-            public Parameter InsertParameter(TypeNode type, string name)
-            {
-                var param = CreateParam(type, name);
-                parameters.Insert(0, param);
-                return param;
-            }
-
-            /// <summary>
-            /// Creates a parameter with the given index and type information.
-            /// </summary>
-            /// <param name="type">The parameter type.</param>
-            /// <param name="name">The parameter name (for debugging purposes).</param>
-            /// <returns>The created parameter.</returns>
-            private Parameter CreateParam(TypeNode type, string name)
-            {
-                var param = new Parameter(Method, type, name)
-                {
-                    SequencePoint = SequencePoint
-                };
-                Context.Create(param);
-                return param;
             }
 
             /// <summary>
@@ -357,11 +325,8 @@ namespace ILGPU.IR
             {
                 if (disposing)
                 {
-                    // Assign parameters and adjust their indices
-                    var @params = parameters.ToImmutable();
-                    for (int i = 0, e = @params.Length; i < e; ++i)
-                        @params[i].Index = i;
-                    Method.parameters = @params;
+                    // Dispose the parameter builder
+                    Parameters.Dispose();
 
                     // Dispose all basic block builders
                     foreach (var builder in basicBlockBuilders)

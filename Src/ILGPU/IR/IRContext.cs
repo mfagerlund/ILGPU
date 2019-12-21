@@ -419,7 +419,7 @@ namespace ILGPU.IR
                         sourceMethod.NumParameters);
                     foreach (var param in sourceMethod.Parameters)
                     {
-                        var newParam = builder.AddParameter(param.Type, param.Name);
+                        var newParam = builder.Parameters.AddParameter(param.Type, param.Name);
                         parameterArguments.Add(newParam);
                     }
                     var parameterMapping = sourceMethod.CreateParameterMapping(

@@ -151,11 +151,6 @@ namespace ILGPU.IR
         /// </summary>
         Store,
 
-        /// <summary>
-        /// A <see cref="Values.PhiValue"/> value.
-        /// </summary>
-        Phi,
-
         // Functions
 
         /// <summary>

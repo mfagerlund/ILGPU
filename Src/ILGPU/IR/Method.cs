@@ -78,108 +78,12 @@ namespace ILGPU.IR
     /// <summary>
     /// Represents a method node within the IR.
     /// </summary>
-    public sealed partial class Method : Node, IMethodMappingObject
+    public sealed partial class Method :
+        Node,
+        IMethodMappingObject,
+        IParameterContainer
     {
         #region Nested Types
-
-        /// <summary>
-        /// Represents a readonly view on all parameters.
-        /// </summary>
-        public readonly struct ParameterCollection : IReadOnlyCollection<Parameter>
-        {
-            #region Nested Types
-
-            /// <summary>
-            /// Enumerates all actual (not replaced) parameters.
-            /// </summary>
-            public struct Enumerator : IEnumerator<Parameter>
-            {
-                private readonly ImmutableArray<Parameter> parameters;
-                private ImmutableArray<Parameter>.Enumerator enumerator;
-
-                /// <summary>
-                /// Constructs a new parameter enumerator.
-                /// </summary>
-                /// <param name="arguments">The parent source array.</param>
-                internal Enumerator(ImmutableArray<Parameter> arguments)
-                {
-                    parameters = arguments;
-                    enumerator = parameters.GetEnumerator();
-                }
-
-                /// <summary>
-                /// Returns the current parameter.
-                /// </summary>
-                public Parameter Current => enumerator.Current;
-
-                /// <summary cref="IEnumerator.Current"/>
-                object IEnumerator.Current => Current;
-
-                /// <summary cref="IDisposable.Dispose"/>
-                public void Dispose() { }
-
-                /// <summary cref="IEnumerator.MoveNext"/>
-                public bool MoveNext() => enumerator.MoveNext();
-
-                /// <summary cref="IEnumerator.Reset"/>
-                void IEnumerator.Reset() => throw new InvalidOperationException();
-            }
-
-            #endregion
-
-            #region Instance
-
-            private readonly ImmutableArray<Parameter> parameters;
-
-            /// <summary>
-            /// Constructs a new parameter collection.
-            /// </summary>
-            /// <param name="nodeReferences">The source parameters.</param>
-            internal ParameterCollection(ImmutableArray<Parameter> nodeReferences)
-            {
-                parameters = nodeReferences;
-            }
-
-            #endregion
-
-            #region Properties
-
-            /// <summary>
-            /// Returns the number of attached parameters.
-            /// </summary>
-            public int Count => parameters.Length;
-
-            /// <summary>
-            /// Returns the i-th parameter.
-            /// </summary>
-            /// <param name="index">The parameter index.</param>
-            /// <returns>The resolved parameter.</returns>
-            public Parameter this[int index] => parameters[index];
-
-            #endregion
-
-            #region Methods
-
-            /// <summary>
-            /// Returns an enumerator to enumerate all actual (not replaced) parameters.
-            /// </summary>
-            /// <returns>The enumerator.</returns>
-            public Enumerator GetEnumerator() => new Enumerator(parameters);
-
-            /// <summary>
-            /// Returns an enumerator to enumerator all actual (not replaced) parameters.
-            /// </summary>
-            /// <returns>The enumerator.</returns>
-            IEnumerator<Parameter> IEnumerable<Parameter>.GetEnumerator() => GetEnumerator();
-
-            /// <summary>
-            /// Returns an enumerator to enumerator all actual (not replaced) parameters.
-            /// </summary>
-            /// <returns>The enumerator.</returns>
-            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-
-            #endregion
-        }
 
         /// <summary>
         /// Represents a parameter mapping.
@@ -323,12 +227,6 @@ namespace ILGPU.IR
         private volatile MethodTransformationFlags transformationFlags =
             MethodTransformationFlags.None;
 
-        /// <summary>
-        /// Stores all parameters.
-        /// </summary>
-        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-        private ImmutableArray<Parameter> parameters = ImmutableArray<Parameter>.Empty;
-
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
         private volatile Builder builder = null;
 
@@ -348,6 +246,7 @@ namespace ILGPU.IR
             Context = context;
             Declaration = declaration;
             Id = context.Context.CreateNodeId();
+            Parameters = ParameterCollection.Create();
         }
 
         #endregion
@@ -412,12 +311,12 @@ namespace ILGPU.IR
         /// <summary>
         /// Returns all attached parameters.
         /// </summary>
-        public ParameterCollection Parameters => new ParameterCollection(parameters);
+        public ParameterCollection Parameters { get; }
 
         /// <summary>
         /// Returns the number of attached parameters.
         /// </summary>
-        public int NumParameters => parameters.Length;
+        public int NumParameters => Parameters.Count;
 
         /// <summary>
         /// Returns the associated entry block.
@@ -522,16 +421,6 @@ namespace ILGPU.IR
             // Dump blocks
             foreach (var block in scope)
                 block.Dump(textWriter, ignoreDeadValues);
-        }
-
-        /// <summary>
-        /// Seals the current parameters.
-        /// </summary>
-        /// <param name="parameterArray">The new parameters.</param>
-        internal void SealParameters(ImmutableArray<Parameter> parameterArray)
-        {
-            Debug.Assert(parameters.IsDefaultOrEmpty, "Invalid sealing operation");
-            parameters = parameterArray;
         }
 
         /// <summary>

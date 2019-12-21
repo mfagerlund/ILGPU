@@ -95,15 +95,6 @@ namespace ILGPU.Backends.PTX
 #endif
         }
 
-        /// <summary cref="IValueVisitor.Visit(PhiValue)"/>
-        public void Visit(PhiValue phiValue)
-        {
-            // Phi values are already assigned to registers
-#if DEBUG
-            Load(phiValue);
-#endif
-        }
-
         /// <summary cref="IValueVisitor.Visit(UnaryArithmeticValue)"/>
         public void Visit(UnaryArithmeticValue value)
         {

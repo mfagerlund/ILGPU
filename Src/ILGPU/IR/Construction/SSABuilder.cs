@@ -59,22 +59,13 @@ namespace ILGPU.IR.Construction
             object IEnumerator.Current => Current;
 
             /// <summary cref="IDisposable.Dispose"/>
-            public void Dispose()
-            {
-                enumerator.Dispose();
-            }
+            public void Dispose() => enumerator.Dispose();
 
             /// <summary cref="IEnumerator.MoveNext"/>
-            public bool MoveNext()
-            {
-                return enumerator.MoveNext();
-            }
+            public bool MoveNext() => enumerator.MoveNext();
 
             /// <summary cref="IEnumerator.Reset"/>
-            public void Reset()
-            {
-                enumerator = set.GetEnumerator();
-            }
+            public void Reset() => enumerator = set.GetEnumerator();
         }
 
         /// <summary>
@@ -106,10 +97,7 @@ namespace ILGPU.IR.Construction
             /// Applies the internal marker value to the given target.
             /// </summary>
             /// <param name="targetMarkerValue">The target marker value reference.</param>
-            public void Apply(ref int targetMarkerValue)
-            {
-                targetMarkerValue = MarkerValue;
-            }
+            public void Apply(ref int targetMarkerValue) => targetMarkerValue = MarkerValue;
         }
 
         /// <summary>
@@ -129,13 +117,11 @@ namespace ILGPU.IR.Construction
                 /// Constructs an incomplete phi.
                 /// </summary>
                 /// <param name="variableRef">The referenced variable.</param>
-                /// <param name="phiBuilder">The phi builder.</param>
-                public IncompletePhi(
-                    TVariable variableRef,
-                    PhiValue.Builder phiBuilder)
+                /// <param name="phiParameter">The phi builder.</param>
+                public IncompletePhi(TVariable variableRef, Parameter phiParameter)
                 {
                     VariableRef = variableRef;
-                    PhiBuilder = phiBuilder;
+                    Phi = phiParameter;
                 }
 
                 /// <summary>
@@ -144,14 +130,14 @@ namespace ILGPU.IR.Construction
                 public TVariable VariableRef { get; }
 
                 /// <summary>
-                /// Returns the associated phi builder.
+                /// Returns the associated phi parameter.
                 /// </summary>
-                public PhiValue.Builder PhiBuilder { get; }
+                public Parameter Phi { get; }
 
                 /// <summary>
                 /// Returns the type of the underlying phi node.
                 /// </summary>
-                public TypeNode PhiType => PhiBuilder.Type;
+                public TypeNode PhiType => Phi.Type;
             }
 
             #endregion
@@ -260,20 +246,15 @@ namespace ILGPU.IR.Construction
             /// True, iff the old marker was not equal to the new marker
             /// (the block was not marked with the new marker value).
             /// </returns>
-            public bool Mark(int newMarker)
-            {
-                return Interlocked.Exchange(ref markerValue, newMarker) != newMarker;
-            }
+            public bool Mark(int newMarker) =>
+                Interlocked.Exchange(ref markerValue, newMarker) != newMarker;
 
             /// <summary>
             /// Sets the given variable to the given value.
             /// </summary>
             /// <param name="var">The variable reference.</param>
             /// <param name="value">The value to set.</param>
-            public void SetValue(TVariable var, Value value)
-            {
-                values[var] = value;
-            }
+            public void SetValue(TVariable var, Value value) => values[var] = value;
 
             /// <summary>
             /// Returns the value of the given variable.
@@ -292,11 +273,7 @@ namespace ILGPU.IR.Construction
             /// Removes the value of the given variable.
             /// </summary>
             /// <param name="var">The variable reference.</param>
-            public void RemoveValue(TVariable var)
-            {
-                values.Remove(var);
-            }
-
+            public void RemoveValue(TVariable var) => values.Remove(var);
 
             /// <summary>
             /// Peeks a value recursively. This method only retrieves a value
@@ -346,10 +323,10 @@ namespace ILGPU.IR.Construction
                 {
                     // Insert the actual phi param
                     var peekedValue = PeekValue(var, markerProvider.CreateMarker());
-                    var phiBuilder = Builder.CreatePhi(peekedValue.Type);
-                    value = phiBuilder.PhiValue;
+                    var parameter = Builder.Parameters.AddParameter(peekedValue.Type);
+                    value = parameter;
 
-                    var incompletePhi = new IncompletePhi(var, phiBuilder);
+                    var incompletePhi = new IncompletePhi(var, parameter);
                     if (IsSealed)
                     {
                         SetValue(var, value);
@@ -369,15 +346,18 @@ namespace ILGPU.IR.Construction
             /// </summary>
             /// <param name="incompletePhi">An incomplete phi node to complete.</param>
             /// <param name="markerProvider">A provider of new marker values.</param>
-            private Value SetupPhiArguments(in IncompletePhi incompletePhi, ref MarkerProvider markerProvider)
+            private Value SetupPhiArguments(
+                in IncompletePhi incompletePhi,
+                ref MarkerProvider markerProvider)
             {
-                var phiBuilder = incompletePhi.PhiBuilder;
                 foreach (var predecessor in Node.Predecessors)
                 {
                     var valueContainer = Parent[predecessor];
 
                     // Get the related predecessor value
-                    var value = valueContainer.GetValue(incompletePhi.VariableRef, ref markerProvider);
+                    var value = valueContainer.GetValue(
+                        incompletePhi.VariableRef,
+                        ref markerProvider);
 
                     // Convert the value into the target type
                     if (incompletePhi.PhiType is PrimitiveType primitiveType)
@@ -547,6 +527,13 @@ namespace ILGPU.IR.Construction
         /// <param name="node">The cfg node.</param>
         /// <returns>The resolved value container.</returns>
         private ValueContainer this[CFG.Node node] => mapping[node];
+
+        /// <summary>
+        /// Returns the internal value container for the given block.
+        /// </summary>
+        /// <param name="block">The block.</param>
+        /// <returns>The resolved value container.</returns>
+        private ValueContainer this[BasicBlock block] => this[CFG[block]];
 
         #endregion
 

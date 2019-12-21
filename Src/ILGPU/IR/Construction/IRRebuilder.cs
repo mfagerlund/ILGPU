@@ -37,18 +37,6 @@ namespace ILGPU.IR.Construction
             new Dictionary<BasicBlock, BasicBlock.Builder>();
 
         /// <summary>
-        /// Maps old block is to new block ids.
-        /// </summary>
-        private readonly Dictionary<NodeId, NodeId> blockIdMapping =
-            new Dictionary<NodeId, NodeId>();
-
-        /// <summary>
-        /// Maps old phi nodes to new phi builders.
-        /// </summary>
-        private readonly List<(PhiValue, PhiValue.Builder)> phiMapping =
-            new List<(PhiValue, PhiValue.Builder)>();
-
-        /// <summary>
         /// Maps old nodes to new nodes.
         /// </summary>
         private readonly Dictionary<Value, Value> valueMapping =
@@ -78,7 +66,7 @@ namespace ILGPU.IR.Construction
             foreach (var param in scope.Method.Parameters)
                 valueMapping.Add(param, parameterMapping[param]);
 
-            // Create blocks and prepare phi nodes
+            // Create blocks and prepare block parameters
             foreach (var block in scope)
             {
                 // Setup debug information for the current block
@@ -86,21 +74,16 @@ namespace ILGPU.IR.Construction
 
                 var newBlock = builder.CreateBasicBlock(block.Name);
                 blockMapping.Add(block, newBlock);
-                blockIdMapping.Add(block.Id, newBlock.BasicBlock.Id);
 
-                foreach (Value value in block)
+                foreach (var param in block.Parameters)
                 {
-                    if (value is PhiValue phiValue)
-                    {
-                        Debug.Assert(!valueMapping.ContainsKey(value), "Phi already found");
-
-                        // Setup debug information for the current value
-                        Builder.SequencePoint = value.SequencePoint;
-                        var phiBuilder = newBlock.CreatePhi(phiValue.Type);
-
-                        phiMapping.Add((phiValue, phiBuilder));
-                        Map(phiValue, phiBuilder.PhiValue);
-                    }
+                    if (param.IsReplaced)
+                        continue;
+                    var newParam = newBlock.Parameters.AddParameter(
+                        param.Type,
+                        param.Name);
+                    newParam.SequencePoint = param.SequencePoint;
+                    valueMapping.Add(param, newParam);
                 }
             }
         }
@@ -160,19 +143,6 @@ namespace ILGPU.IR.Construction
                     Rebuild(terminator);
             }
 
-            // Seal all phi nodes
-            foreach (var (sourcePhi, targetPhiBuilder) in phiMapping)
-            {
-                // Append all phi arguments
-                for (int i = 0, e = sourcePhi.Nodes.Length; i < e; ++i)
-                {
-                    var argument = sourcePhi.Nodes[i];
-                    var newBlockId = blockIdMapping[sourcePhi.NodeBlockIds[i]];
-                    targetPhiBuilder.AddArgument(newBlockId, valueMapping[argument]);
-                }
-                targetPhiBuilder.Seal();
-            }
-
             return exitBlocks.ToImmutable();
         }
 
@@ -181,7 +151,7 @@ namespace ILGPU.IR.Construction
         /// </summary>
         /// <param name="oldNode">The old node.</param>
         /// <param name="newNode">The new node.</param>
-        /// <returns>True, iff a corresponding new node could be found.</returns>
+        /// <returns>True, ifa corresponding new node could be found.</returns>
         public bool TryGetNewNode(Value oldNode, out Value newNode) =>
             valueMapping.TryGetValue(oldNode, out newNode);
 

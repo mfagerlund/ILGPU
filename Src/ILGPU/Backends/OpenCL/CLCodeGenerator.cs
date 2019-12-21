@@ -16,6 +16,7 @@ using ILGPU.IR.Intrinsics;
 using ILGPU.IR.Types;
 using ILGPU.IR.Values;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace ILGPU.Backends.OpenCL
@@ -139,21 +140,23 @@ namespace ILGPU.Backends.OpenCL
         /// <summary>
         /// Represents a specialized phi binding allocator.
         /// </summary>
-        private readonly struct PhiBindingAllocator : IPhiBindingAllocator
+        private struct BindingAllocator : IBlockArgumentBindingsAllocator<Variable>
         {
-            private readonly Dictionary<BasicBlock, List<Variable>> phiMapping;
+            private readonly Dictionary<BasicBlock, List<Variable>> parameterMapping;
+            private CFG.Node dominator;
 
             /// <summary>
             /// Constructs a new phi binding allocator.
             /// </summary>
             /// <param name="parent">The parent code generator.</param>
             /// <param name="cfg">The CFG to use.</param>
-            public PhiBindingAllocator(CLCodeGenerator parent, CFG cfg)
+            public BindingAllocator(CLCodeGenerator parent, CFG cfg)
             {
-                phiMapping = new Dictionary<BasicBlock, List<Variable>>(cfg.Count);
+                parameterMapping = new Dictionary<BasicBlock, List<Variable>>(cfg.Count);
                 Parent = parent;
                 CFG = cfg;
                 Dominators = Dominators.Create(cfg);
+                dominator = null;
             }
 
             /// <summary>
@@ -171,46 +174,45 @@ namespace ILGPU.Backends.OpenCL
             /// </summary>
             public Dominators Dominators { get; }
 
-            /// <summary cref="IPhiBindingAllocator.Process(CFG.Node, Phis)"/>
-            public void Process(CFG.Node node, Phis phis) { }
-
-            /// <summary cref="IPhiBindingAllocator.Allocate(CFG.Node, PhiValue)"/>
-            public void Allocate(CFG.Node node, PhiValue phiValue)
+            /// <summary cref="IBlockArgumentBindingsAllocator{TBinding}.Process(BasicBlock)"/>
+            public void Process(BasicBlock block)
             {
-                var variable = Parent.Allocate(phiValue);
+                // Check for block parameters and compute the declaration block
+                var node = CFG[block];
 
-                var targetNode = node;
-                foreach (var argument in phiValue)
+                // We can only receive a block argument value from one of our predecessors
+                dominator = node;
+                foreach (var pred in node.Predecessors)
                 {
-                    if (argument.BasicBlock == null)
-                        targetNode = CFG.EntryNode;
-                    else
-                    {
-                        targetNode = Dominators.GetImmediateCommonDominator(
-                            targetNode,
-                            CFG[argument.BasicBlock]);
-                    }
-
-                    if (targetNode == CFG.EntryNode)
+                    dominator = Dominators.GetImmediateCommonDominator(dominator, pred);
+                    if (dominator == CFG.EntryNode)
                         break;
                 }
 
-                if (!phiMapping.TryGetValue(targetNode.Block, out var phiVariables))
+                if (!parameterMapping.TryGetValue(dominator.Block, out var variables))
                 {
-                    phiVariables = new List<Variable>();
-                    phiMapping.Add(targetNode.Block, phiVariables);
+                    variables = new List<Variable>();
+                    parameterMapping.Add(dominator.Block, variables);
                 }
-                phiVariables.Add(variable);
+            }
+
+            /// <summary cref="IBlockArgumentBindingsAllocator{TBinding}.Allocate(BasicBlock, Parameter)"/>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public Variable Allocate(BasicBlock block, Parameter parameter)
+            {
+                var variable = Parent.Allocate(parameter);
+                parameterMapping[dominator.Block].Add(variable);
+                return variable;
             }
 
             /// <summary>
-            /// Tries to get phi variables to declare in the given block.
+            /// Tries to get parameters to declare in the given block.
             /// </summary>
             /// <param name="block">The block.</param>
-            /// <param name="phisToDeclare">The variables to declare (if any).</param>
+            /// <param name="parmetersToDeclare">The variables to declare (if any).</param>
             /// <returns>True, if there are some phi variables to declare.</returns>
-            public bool TryGetPhis(BasicBlock block, out List<Variable> phisToDeclare) =>
-                phiMapping.TryGetValue(block, out phisToDeclare);
+            public bool TryGetPhis(BasicBlock block, out List<Variable> parmetersToDeclare) =>
+                parameterMapping.TryGetValue(block, out parmetersToDeclare);
         }
 
         #endregion
@@ -456,8 +458,10 @@ namespace ILGPU.Backends.OpenCL
 
             // Find all phi nodes, allocate target registers and setup internal mapping
             var cfg = Scope.CreateCFG();
-            var bindingAllocator = new PhiBindingAllocator(this, cfg);
-            var phiBindings = PhiBindings.Create(cfg, bindingAllocator);
+            var bindingAllocator = new BindingAllocator(this, cfg);
+            var argumentBindings = BlockArgumentBindings.Create<BindingAllocator, Variable>(
+                Scope,
+                bindingAllocator);
 
             // Generate code
             foreach (var block in Scope)
@@ -489,16 +493,11 @@ namespace ILGPU.Backends.OpenCL
                     }
                 }
 
-                // Wire phi nodes
-                if (phiBindings.TryGetBindings(block, out var bindings))
+                // Wire block arguments
+                foreach (var entry in argumentBindings[block])
                 {
-                    foreach (var (value, phiValue) in bindings)
-                    {
-                        var phiTargetRegister = Load(phiValue);
-                        var sourceRegister = Load(value);
-
-                        Move(phiTargetRegister, sourceRegister);
-                    }
+                    var sourceRegister = Load(entry.Value);
+                    Move(entry.Binding, sourceRegister);
                 }
 
                 // Build terminator

@@ -162,13 +162,13 @@ namespace ILGPU.Backends.PTX
         /// <summary>
         /// Represents a specialized phi binding allocator.
         /// </summary>
-        private readonly struct PhiBindingAllocator : IPhiBindingAllocator
+        private readonly struct BindingAllocator : IBlockArgumentBindingsAllocator<Register>
         {
             /// <summary>
             /// Constructs a new phi binding allocator.
             /// </summary>
             /// <param name="parent">The parent code generator.</param>
-            public PhiBindingAllocator(PTXCodeGenerator parent)
+            public BindingAllocator(PTXCodeGenerator parent)
             {
                 Parent = parent;
             }
@@ -178,12 +178,12 @@ namespace ILGPU.Backends.PTX
             /// </summary>
             public PTXCodeGenerator Parent { get; }
 
-            /// <summary cref="IPhiBindingAllocator.Process(CFG.Node, Phis)"/>
-            public void Process(CFG.Node node, Phis phis) { }
+            /// <summary cref="IBlockArgumentBindingsAllocator{TBinding}.Process(BasicBlock)"/>
+            public void Process(BasicBlock block) { }
 
-            /// <summary cref="IPhiBindingAllocator.Allocate(CFG.Node, PhiValue)"/>
-            public void Allocate(CFG.Node node, PhiValue phiValue) =>
-                Parent.Allocate(phiValue);
+            /// <summary cref="IBlockArgumentBindingsAllocator{TBinding}.Allocate(BasicBlock, Parameter)"/>
+            public Register Allocate(BasicBlock block, Parameter parameter) =>
+                Parent.Allocate(parameter);
         }
 
         #endregion
@@ -444,7 +444,9 @@ namespace ILGPU.Backends.PTX
 
             // Find all phi nodes, allocate target registers and setup internal mapping
             var cfg = Scope.CreateCFG();
-            var phiBindings = PhiBindings.Create(cfg, new PhiBindingAllocator(this));
+            var argumentBindings = BlockArgumentBindings.Create<BindingAllocator, Register>(
+                Scope,
+                new BindingAllocator(this));
             Builder.AppendLine();
 
             // Generate code
@@ -478,21 +480,15 @@ namespace ILGPU.Backends.PTX
 
                 DebugInfoGenerator.ResetSequencePoints();
 
-                // Wire phi nodes
-                if (phiBindings.TryGetBindings(block, out var bindings))
+                // Wire block arguments
+                foreach (var entry in argumentBindings[block])
                 {
-                    foreach (var (value, phiValue) in bindings)
-                    {
-                        var phiTargetRegister = Load(phiValue);
-                        var sourceRegister = Load(value);
-
-                        // Prepare move
-                        EmitComplexCommand(
-                            PTXInstructions.MoveOperation,
-                            new PhiMoveEmitter(),
-                            phiTargetRegister,
-                            sourceRegister);
-                    }
+                    var sourceRegister = Load(entry.Value);
+                    EmitComplexCommand(
+                        PTXInstructions.MoveOperation,
+                        new PhiMoveEmitter(),
+                        entry.Binding,
+                        sourceRegister);
                 }
 
                 // Build terminator
