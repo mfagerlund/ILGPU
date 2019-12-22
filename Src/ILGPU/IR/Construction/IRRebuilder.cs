@@ -11,6 +11,7 @@
 
 using ILGPU.IR.Analyses;
 using ILGPU.IR.Values;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -21,7 +22,7 @@ namespace ILGPU.IR.Construction
     /// <summary>
     /// Represents an IR rebuilder to rebuild parts of the IR.
     /// </summary>
-    public sealed class IRRebuilder
+    public sealed class IRRebuilder : BranchTarget.IArgumentMapper
     {
         #region Instance
 
@@ -229,6 +230,18 @@ namespace ILGPU.IR.Construction
         public T RebuildAs<T>(Value source)
             where T : Value =>
             Rebuild(source) as T;
+
+        /// <summary cref="BranchTarget.IArgumentMapper.CanMapBlockArgument(BasicBlock, int)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        bool BranchTarget.IArgumentMapper.CanMapBlockArgument(BasicBlock block, int argumentIndex)
+        {
+            foreach (var succ in block.Successors)
+            {
+                if (succ.Parameters[argumentIndex].IsReplaced)
+                    return false;
+            }
+            return true;
+        }
 
         #endregion
     }

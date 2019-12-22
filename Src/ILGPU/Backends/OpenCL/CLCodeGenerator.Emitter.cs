@@ -11,6 +11,7 @@
 
 using ILGPU.IR;
 using ILGPU.IR.Types;
+using ILGPU.IR.Values;
 using System;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -485,11 +486,11 @@ namespace ILGPU.Backends.OpenCL
         /// <summary>
         /// Emits a new goto statement to the given target block.
         /// </summary>
-        /// <param name="block">The target block to jump to.</param>
-        public void GotoStatement(BasicBlock block)
+        /// <param name="target">The target to jump to.</param>
+        public void GotoStatement(BranchTarget target)
         {
             using (var statement = BeginStatement(CLInstructions.GotoStatement))
-                statement.AppendOperation(blockLookup[block]);
+                statement.AppendOperation(blockLookup[target.TargetBlock]);
         }
 
         /// <summary>

@@ -12,6 +12,7 @@
 using ILGPU.Frontend.DebugInformation;
 using ILGPU.IR.Analyses;
 using ILGPU.IR.Construction;
+using ILGPU.IR.Types;
 using ILGPU.IR.Values;
 using ILGPU.Util;
 using System.Collections;
@@ -87,6 +88,13 @@ namespace ILGPU.IR
             /// </summary>
             private int insertPosition;
 
+            private Branch currentBranch;
+
+            /// <summary>
+            /// The current branch builders.
+            /// </summary>
+            private BranchTarget.Builders targetBuilders;
+
             /// <summary>
             /// Constructs a new builder.
             /// </summary>
@@ -100,6 +108,7 @@ namespace ILGPU.IR
                 MethodBuilder = methodBuilder;
 
                 Parameters = block.Parameters.ToBuilder(new ParameterBuilder(this));
+                targetBuilders = new BranchTarget.Builders(this);
 
                 values = block.values;
                 insertPosition = Count;
@@ -126,7 +135,7 @@ namespace ILGPU.IR
             public TerminatorValue Terminator
             {
                 get => BasicBlock.Terminator;
-                set => BasicBlock.Terminator = value;
+                private set => BasicBlock.Terminator = value;
             }
 
             /// <summary>
@@ -159,6 +168,47 @@ namespace ILGPU.IR
             #endregion
 
             #region Methods
+
+            /// <summary>
+            /// Adds the given value to the current block arguments.
+            /// </summary>
+            /// <param name="target">The target block..</param>
+            /// <param name="value">The value to add.</param>
+            public void AddArgument(BasicBlock target, Value value) =>
+                SetupBranchBuilder().AddArgument(target, value);
+
+            /// <summary>
+            /// Returns the i-th argument.
+            /// </summary>
+            /// <param name="target">The target block.</param>
+            /// <param name="index">The argument index.</param>
+            /// <returns>The desired argument.</returns>
+            public Value GetArgument(BasicBlock target, int index) =>
+                SetupBranchBuilder()[target][index];
+
+            /// <summary>
+            /// Maps all block arguments using the given mapper.
+            /// </summary>
+            /// <typeparam name="TMapper">The mapper type.</typeparam>
+            /// <param name="mapper">The mapper instance to use.</param>
+            public void MapArguments<TMapper>(TMapper mapper)
+                where TMapper : BranchTarget.IArgumentMapper =>
+                SetupBranchBuilder().MapArguments(mapper);
+
+            /// <summary>
+            /// Setups the internal branch builder.
+            /// </summary>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private ref BranchTarget.Builders SetupBranchBuilder()
+            {
+                if (Terminator is Branch branch && currentBranch != branch)
+                {
+                    currentBranch = branch;
+                    targetBuilders.Register(branch);
+                }
+
+                return ref targetBuilders;
+            }
 
             /// <summary>
             /// Setups the current sequence point of this basic block and
@@ -331,12 +381,11 @@ namespace ILGPU.IR
                     }
                     else
                     {
-                        // We require a custom phi parameter
-                        var phiBuilder = tempBlock.CreatePhi(callTarget.ReturnType);
+                        // We require a custom block parameter
+                        var blockParameter = Parameters.AddParameter(callTarget.ReturnType);
                         foreach (var (returnBuilder, returnValue) in exitBlocks)
-                            phiBuilder.AddArgument(returnBuilder.BasicBlock.Id, returnValue);
-                        call.Replace(phiBuilder.PhiValue);
-                        phiBuilder.Seal();
+                            returnBuilder.AddArgument(BasicBlock, returnValue);
+                        call.Replace(blockParameter);
                     }
                 }
                 else
@@ -415,6 +464,15 @@ namespace ILGPU.IR
                 int offset = Count;
                 otherBuilder.PerformRemoval(values);
 
+                // Attach parameters
+                if (mergeParameters)
+                {
+                    Parameters.Add(other.Parameters);
+
+                    // TODO: merge block argument values
+                    // CAUTION: might have to be merged to their predecessor values
+                }
+
                 // Attach values to another block
                 for (; offset < Count; ++offset)
                 {
@@ -453,16 +511,15 @@ namespace ILGPU.IR
             {
                 MethodBuilder.Create(node);
                 Terminator?.Replace(node);
-                return Terminator = node;
+                Terminator = node;
+
+                SetupBranchBuilder();
+                return node;
             }
 
-            /// <summary cref="IRBuilder.CreatePhiValue(PhiValue)"/>
-            protected override PhiValue CreatePhiValue(PhiValue phiValue)
-            {
-                MethodBuilder.Create(phiValue);
-                InsertAtBeginning(phiValue);
-                return phiValue;
-            }
+            /// <summary cref="IRBuilder.OnCreateBranchTarget(BranchTarget.Builder)"/>
+            protected override void OnCreateBranchTarget(BranchTarget.Builder builder) =>
+                SetupBranchBuilder().Register(builder);
 
             /// <summary cref="IRBuilder.Append{T}(T)"/>
             protected override T Append<T>(T node)
@@ -519,6 +576,9 @@ namespace ILGPU.IR
                 {
                     // Dispose the parameter builder
                     Parameters.Dispose();
+
+                    // Seal all branch builders
+                    targetBuilders.Seal();
 
                     // Perform removal operations and release the builder
                     PerformRemoval();

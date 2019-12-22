@@ -217,6 +217,11 @@ namespace ILGPU.IR
         // Terminators
 
         /// <summary>
+        /// A <see cref="Values.BranchTarget"/> value.
+        /// </summary>
+        BranchTarget,
+
+        /// <summary>
         /// A <see cref="Values.ReturnTerminator"/> terminator value.
         /// </summary>
         Return,

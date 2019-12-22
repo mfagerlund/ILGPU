@@ -65,6 +65,39 @@ namespace ILGPU.IR
         }
 
         /// <summary>
+        /// Determines whether a block argument is still required.
+        /// </summary>
+        private readonly struct ArgumentMapper : BranchTarget.IArgumentMapper
+        {
+            /// <summary>
+            /// Constructs a new argument mapper.
+            /// </summary>
+            /// <param name="parent">The parent builder.</param>
+            public ArgumentMapper(Builder parent)
+            {
+                Parent = parent;
+            }
+
+            /// <summary>
+            /// Returns the parent method builder.
+            /// </summary>
+            public Builder Parent { get; }
+
+            /// <summary cref="BranchTarget.IArgumentMapper.CanMapBlockArgument(BasicBlock, int)"/>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool CanMapBlockArgument(BasicBlock block, int argumentIndex)
+            {
+                foreach (var successor in block.Successors)
+                {
+                    if (successor.TryGetBuilder(out var builder) &&
+                        builder.Parameters[argumentIndex].IsReplaced)
+                        return false;
+                }
+                return true;
+            }
+        }
+
+        /// <summary>
         /// A builder to build methods.
         /// </summary>
         public sealed class Builder : DisposeBase, IMethodMappingObject

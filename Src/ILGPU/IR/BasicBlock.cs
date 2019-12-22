@@ -153,6 +153,112 @@ namespace ILGPU.IR
             #endregion
         }
 
+        /// <summary>
+        /// A type safe collection of all successor blocks.
+        /// </summary>
+        public readonly struct SuccessorCollection : IReadOnlyList<BasicBlock>
+        {
+            #region Nested Types
+
+            /// <summary>
+            /// An enumerator to iterate over all successor blocks.
+            /// </summary>
+            public struct Enumerator : IEnumerator<BasicBlock>
+            {
+                #region Instance
+
+                private TerminatorValue.TargetCollection.Enumerator enumerator;
+
+                /// <summary>
+                /// Constructs a new enumerator.
+                /// </summary>
+                /// <param name="collection">The parent collection.</param>
+                internal Enumerator(in SuccessorCollection collection)
+                {
+                    enumerator = collection.Targets.GetEnumerator();
+                }
+
+                #endregion
+
+                #region Properties
+
+                /// <summary>
+                /// Returns the current basic block.
+                /// </summary>
+                public BasicBlock Current => enumerator.Current.TargetBlock;
+
+                /// <summary cref="IEnumerator.Current"/>
+                object IEnumerator.Current => Current;
+
+                #endregion
+
+                #region Methods
+
+                /// <summary cref="IDisposable.Dispose"/>
+                public void Dispose() { }
+
+                /// <summary cref="IEnumerator.MoveNext"/>
+                public bool MoveNext() => enumerator.MoveNext();
+
+                /// <summary cref="IEnumerator.Reset"/>
+                void IEnumerator.Reset() => throw new InvalidOperationException();
+
+                #endregion
+            }
+
+            #endregion
+
+            #region Instance
+
+            /// <summary>
+            /// Constructs a new successor collection.
+            /// </summary>
+            /// <param name="targets">The underlying targets.</param>
+            internal SuccessorCollection(TerminatorValue.TargetCollection targets)
+            {
+                Targets = targets;
+            }
+
+            #endregion
+
+            #region Properties
+
+            /// <summary>
+            /// Returns all underlying targets.
+            /// </summary>
+            public TerminatorValue.TargetCollection Targets { get; }
+
+            /// <summary>
+            /// Returns the number of branch targets.
+            /// </summary>
+            public int Count => Targets.Count;
+
+            /// <summary>
+            /// Returns the i-th basic block.
+            /// </summary>
+            /// <param name="index">The index of the basic block.</param>
+            /// <returns>The i-th basic block.</returns>
+            public BasicBlock this[int index] => Targets[index].TargetBlock;
+
+            #endregion
+
+            #region IEnumerable
+
+            /// <summary>
+            /// Returns an enumerator to enumerate all basic blocks.
+            /// </summary>
+            /// <returns>An enumerator to enumerate all basic blocks.</returns>
+            public Enumerator GetEnumerator() => new Enumerator(this);
+
+            /// <summary cref="IEnumerable{T}.GetEnumerator()"/>
+            IEnumerator<BasicBlock> IEnumerable<BasicBlock>.GetEnumerator() => GetEnumerator();
+
+            /// <summary cref="IEnumerable.GetEnumerator()"/>
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+            #endregion
+        }
+
         #endregion
 
         #region Instance
@@ -200,9 +306,15 @@ namespace ILGPU.IR
         public TerminatorValue Terminator { get; private set; }
 
         /// <summary>
-        /// Returns all successor nodes.
+        /// Returns all successor blocks.
         /// </summary>
-        public ImmutableArray<BasicBlock> Successors => CompactTerminator().Targets;
+        public SuccessorCollection Successors =>
+            new SuccessorCollection(CompactTerminator().Targets);
+
+        /// <summary>
+        /// Returns the number of successor blocks.
+        /// </summary>
+        public int NumSuccessors => CompactTerminator().NumTargets;
 
         /// <summary>
         /// Returns the number of detected blocks.
@@ -225,9 +337,39 @@ namespace ILGPU.IR
         /// Returns the number of attached parameters.
         /// </summary>
         public int NumParameters => Parameters.Count;
+
+        /// <summary>
+        /// Returns all block arguments that are passed to all successors.
+        /// </summary>
+        /// <remarks>
+        /// Note that this array will always be empty in case of a terminator
+        /// that is not a branch.
+        /// </remarks>
+        public ImmutableArray<ValueReference> Arguments
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get
+            {
+                if (CompactTerminator() is Branch branch)
+                    return branch.Arguments;
+                return ImmutableArray<ValueReference>.Empty;
+            }
+        }
+
         #endregion
 
         #region Methods
+
+        /// <summary>
+        /// Tries to get block arguments (if any).
+        /// </summary>
+        /// <param name="arguments">The determined block arguments (if any).</param>
+        /// <returns>True, if the current block has block arguments.</returns>
+        public bool TryGetArguments(out ImmutableArray<ValueReference> arguments)
+        {
+            arguments = Arguments;
+            return arguments.Length > 0;
+        }
 
         /// <summary>
         /// Checks whether this block has side effects.

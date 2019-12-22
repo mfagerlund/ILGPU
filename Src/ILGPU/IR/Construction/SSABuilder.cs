@@ -12,6 +12,7 @@
 using ILGPU.IR.Analyses;
 using ILGPU.IR.Types;
 using ILGPU.IR.Values;
+using ILGPU.Util;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -367,24 +368,30 @@ namespace ILGPU.IR.Construction
                     }
 
                     // Set argument value
-                    phiBuilder.AddArgument(predecessor.Block.Id, value);
+                    valueContainer.Builder.AddArgument(predecessor.Block, value);
                 }
-                Debug.Assert(phiBuilder.Count == Node.Predecessors.Count, "Invalid phi configuration");
-                var phiValue = phiBuilder.Seal();
-                return TryRemoveTrivialPhi(phiValue);
+                return TryRemoveTrivialPhi(this, incompletePhi.Phi);
             }
 
             /// <summary>
             /// Tries to remove trivial phi value.
             /// </summary>
-            /// <param name="phiValue">The phi value to check.</param>
+            /// <param name="valueContainer">The current value container to use.</param>
+            /// <param name="phiValue">The phi parameter to check.</param>
             /// <returns>The resolved value.</returns>
-            private Value TryRemoveTrivialPhi(PhiValue phiValue)
+            private static Value TryRemoveTrivialPhi(ValueContainer valueContainer, Parameter phiValue)
             {
                 Debug.Assert(phiValue != null, "Invalid phi value to remove");
+                var ssaBuilder = valueContainer.Parent;
                 Value same = null;
-                foreach (Value argument in phiValue.Nodes)
+
+                // Resolve associated CFG node
+                foreach (var predecessor in valueContainer.Node.Predecessors)
                 {
+                    var predecessorContainer = ssaBuilder[predecessor];
+                    var argument = predecessorContainer.Builder.GetArgument(
+                        predecessor.Block,
+                        phiValue.Index);
                     if (same == argument || argument == phiValue)
                         continue;
                     if (same != null)
@@ -399,14 +406,21 @@ namespace ILGPU.IR.Construction
                 var uses = phiValue.Uses.Clone();
                 phiValue.Replace(same);
 
-                // Remove the phi node from the current block
-                var builder = Parent.MethodBuilder[phiValue.BasicBlock];
-                builder.Remove(phiValue);
+                // Note that we cannot simply remove the phi parameter since all jumps
+                // to this block pass block arguments to the current block. They will be
+                // automatically removed during the next GC run.
 
                 foreach (var use in uses)
                 {
-                    if (use.Resolve() is PhiValue usedPhi)
-                        TryRemoveTrivialPhi(usedPhi);
+                    if (use.Resolve() is Branch branch)
+                    {
+                        foreach (var successor in branch.TargetBlocks)
+                        {
+                            var successorContainer = ssaBuilder[successor];
+                            var branchParameter = successorContainer.Builder.Parameters[use.Index];
+                            TryRemoveTrivialPhi(successorContainer, branchParameter);
+                        }
+                    }
                 }
 
                 return same;

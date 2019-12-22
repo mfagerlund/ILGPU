@@ -407,6 +407,13 @@ namespace ILGPU.Backends.PTX
         }
 
         /// <summary>
+        /// Returns the target block label for the given branch target.
+        /// </summary>
+        /// <param name="target">The branch target.</param>
+        /// <returns>The determined branch target.</returns>
+        protected string GetTargetLabel(BranchTarget target) => blockLookup[target.TargetBlock];
+
+        /// <summary>
         /// Emits complex phi-value moves.
         /// </summary>
         private readonly struct PhiMoveEmitter : IComplexCommandEmitter

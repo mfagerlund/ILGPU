@@ -32,7 +32,7 @@ namespace ILGPU.Frontend
         }
 
         /// <summary>
-        /// Realizes an uncoditional branch instruction.
+        /// Realizes an unconditional branch instruction.
         /// </summary>
         /// <param name="block">The current basic block.</param>
         /// <param name="builder">The current builder.</param>

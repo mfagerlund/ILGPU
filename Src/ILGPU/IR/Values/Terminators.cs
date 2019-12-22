@@ -13,6 +13,8 @@ using ILGPU.IR.Construction;
 using ILGPU.IR.Types;
 using ILGPU.Util;
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -26,6 +28,138 @@ namespace ILGPU.IR.Values
     /// </summary>
     public abstract class TerminatorValue : Value
     {
+        #region Nested Types
+
+        /// <summary>
+        /// A type safe collection of branch targets.
+        /// </summary>
+        public readonly struct TargetCollection : IReadOnlyList<BranchTarget>
+        {
+            #region Nested Types
+
+            /// <summary>
+            /// An enumerator to iterate over all branch targets.
+            /// </summary>
+            public struct Enumerator : IEnumerator<BranchTarget>
+            {
+                #region Instance
+
+                private ImmutableArray<ValueReference>.Enumerator enumerator;
+
+                /// <summary>
+                /// Constructs a new enumerator.
+                /// </summary>
+                /// <param name="collection">The parent collection.</param>
+                internal Enumerator(in TargetCollection collection)
+                {
+                    enumerator = collection.RawTargets.GetEnumerator();
+                }
+
+                #endregion
+
+                #region Properties
+
+                /// <summary>
+                /// Returns the current branch target.
+                /// </summary>
+                public BranchTarget Current => enumerator.Current.ResolveAs<BranchTarget>();
+
+                /// <summary cref="IEnumerator.Current"/>
+                object IEnumerator.Current => Current;
+
+                #endregion
+
+                #region Methods
+
+                /// <summary cref="IDisposable.Dispose"/>
+                public void Dispose() { }
+
+                /// <summary cref="IEnumerator.MoveNext"/>
+                public bool MoveNext() => enumerator.MoveNext();
+
+                /// <summary cref="IEnumerator.Reset"/>
+                void IEnumerator.Reset() => throw new InvalidOperationException();
+
+                #endregion
+            }
+
+            #endregion
+
+            #region Instance
+
+            /// <summary>
+            /// Constructs a new target collection.
+            /// </summary>
+            /// <param name="rawTargets">The underlying raw target references.</param>
+            internal TargetCollection(ImmutableArray<ValueReference> rawTargets)
+            {
+                RawTargets = rawTargets;
+            }
+
+            #endregion
+
+            #region Properties
+
+            /// <summary>
+            /// Returns all underlying raw target references.
+            /// </summary>
+            public ImmutableArray<ValueReference> RawTargets { get; }
+
+            /// <summary>
+            /// Returns the number of branch targets.
+            /// </summary>
+            public int Count => RawTargets.Length;
+
+            /// <summary>
+            /// Returns the i-th branch target.
+            /// </summary>
+            /// <param name="index">The index of the branch target.</param>
+            /// <returns>The i-th branch target.</returns>
+            public BranchTarget this[int index] => RawTargets[index].ResolveAs<BranchTarget>();
+
+            #endregion
+
+            #region Methods
+
+            /// <summary>
+            /// Converts this target collection into an unsafe array of value references.
+            /// </summary>
+            /// <returns>An array containing value references to all targets.</returns>
+            public ImmutableArray<ValueReference> ToImmutableArray() => RawTargets;
+
+            #endregion
+
+            #region IEnumerable
+
+            /// <summary>
+            /// Returns an enumerator to enumerate all branch targets.
+            /// </summary>
+            /// <returns>An enumerator to enumerate all branch targets.</returns>
+            public Enumerator GetEnumerator() => new Enumerator(this);
+
+            /// <summary cref="IEnumerable{T}.GetEnumerator()"/>
+            IEnumerator<BranchTarget> IEnumerable<BranchTarget>.GetEnumerator() => GetEnumerator();
+
+            /// <summary cref="IEnumerable.GetEnumerator()"/>
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+            #endregion
+
+            #region Operators
+
+            /// <summary>
+            /// Converts the given target collection into an unsafe array of value references.
+            /// </summary>
+            /// <param name="collection">The collection to convert.</param>
+            /// <returns>An array containing value references to all targets.</returns>
+            public static implicit operator ImmutableArray<ValueReference>(
+                TargetCollection collection) => collection.ToImmutableArray();
+
+            #endregion
+        }
+
+        #endregion
+
         #region Instance
 
         /// <summary>
@@ -38,11 +172,11 @@ namespace ILGPU.IR.Values
         protected TerminatorValue(
             ValueKind kind,
             BasicBlock basicBlock,
-            ImmutableArray<BasicBlock> targets,
+            ImmutableArray<ValueReference> targets,
             TypeNode initialType)
             : base(kind, basicBlock, initialType)
         {
-            Targets = targets;
+            RawTargets = targets;
         }
 
         #endregion
@@ -52,12 +186,61 @@ namespace ILGPU.IR.Values
         /// <summary>
         /// Returns the associated targets.
         /// </summary>
-        public ImmutableArray<BasicBlock> Targets { get; }
+        public ImmutableArray<ValueReference> RawTargets { get; }
+
+        /// <summary>
+        /// Returns a collection of all branch targets.
+        /// </summary>
+        public TargetCollection Targets => new TargetCollection(RawTargets);
+
+        /// <summary>
+        /// Returns a collection of all target blocks.
+        /// </summary>
+        public BasicBlock.SuccessorCollection TargetBlocks =>
+            new BasicBlock.SuccessorCollection(Targets);
 
         /// <summary>
         /// Returns the number of attached targets.
         /// </summary>
-        public int NumTargets => Targets.Length;
+        public int NumTargets => RawTargets.Length;
+
+        /// <summary>
+        /// The internal branch arguments that directly influence the behavior
+        /// of the branch-terminator semantics.
+        /// </summary>
+        public ImmutableArray<ValueReference> Arguments { get; private set; }
+
+        /// <summary>
+        /// Returns the number of attached arguments.
+        /// </summary>
+        public int NumArguments => Arguments.Length;
+
+        #endregion
+
+        #region Methods
+
+        /// <summary>
+        /// Returns an immutable array of target blocks.
+        /// </summary>
+        /// <returns>The computed immutable array of target blocks.</returns>
+        public ImmutableArray<BasicBlock> GetTargetBlocks()
+        {
+            var result = ImmutableArray.CreateBuilder<BasicBlock>(NumTargets);
+            foreach (var target in Targets)
+                result.Add(target.TargetBlock);
+            return result.MoveToImmutable();
+        }
+
+        /// <summary>
+        /// Seals the given block arguments.
+        /// </summary>
+        /// <param name="arguments">The block arguments.</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected new void Seal(ImmutableArray<ValueReference> arguments)
+        {
+            Arguments = arguments;
+            base.Seal(RawTargets.AddRange(arguments));
+        }
 
         #endregion
     }
@@ -93,7 +276,7 @@ namespace ILGPU.IR.Values
             : base(
                   ValueKind.Return,
                   basicBlock,
-                  ImmutableArray<BasicBlock>.Empty,
+                  ImmutableArray<ValueReference>.Empty,
                   ComputeType(returnValue.Type))
         {
             Seal(ImmutableArray.Create(returnValue));
@@ -170,20 +353,20 @@ namespace ILGPU.IR.Values
         /// <param name="context">The parent IR context.</param>
         /// <param name="basicBlock">The parent basic block.</param>
         /// <param name="targets">The jump targets.</param>
-        /// <param name="arguments">The branch arguments.</param>
+        /// <param name="branchArguments">The branch arguments.</param>
         internal Branch(
             ValueKind kind,
             IRContext context,
             BasicBlock basicBlock,
-            ImmutableArray<BasicBlock> targets,
-            ImmutableArray<ValueReference> arguments)
+            ImmutableArray<ValueReference> targets,
+            ImmutableArray<ValueReference> branchArguments)
             : base(
                   kind,
                   basicBlock,
                   targets,
                   ComputeType(context))
         {
-            Seal(arguments);
+            Seal(branchArguments);
         }
 
         #endregion
@@ -213,12 +396,12 @@ namespace ILGPU.IR.Values
         internal UnconditionalBranch(
             IRContext context,
             BasicBlock basicBlock,
-            BasicBlock target)
+            BranchTarget target)
             : base(
                   ValueKind.UnconditionalBranch,
                   context,
                   basicBlock,
-                  ImmutableArray.Create(target),
+                  ImmutableArray.Create<ValueReference>(target),
                   ImmutableArray<ValueReference>.Empty)
         { }
 
@@ -229,7 +412,7 @@ namespace ILGPU.IR.Values
         /// <summary>
         /// Returns the unconditional jump target.
         /// </summary>
-        public BasicBlock Target => Targets[0];
+        public BranchTarget Target => Targets[0];
 
         #endregion
 
@@ -237,8 +420,7 @@ namespace ILGPU.IR.Values
 
         /// <summary cref="Value.Rebuild(IRBuilder, IRRebuilder)"/>
         protected internal override Value Rebuild(IRBuilder builder, IRRebuilder rebuilder) =>
-            builder.CreateUnconditionalBranch(
-                rebuilder.LookupTarget(Target));
+            builder.CreateUnconditionalBranch(rebuilder.RebuildAs<BranchTarget>(Target));
 
         /// <summary cref="Value.Accept"/>
         public override void Accept<T>(T visitor) => visitor.Visit(this);
@@ -251,7 +433,7 @@ namespace ILGPU.IR.Values
         protected override string ToPrefixString() => "branch";
 
         /// <summary cref="Value.ToArgString"/>
-        protected override string ToArgString() => Target.ToReferenceString();
+        protected override string ToArgString() => Target.ToString();
 
         #endregion
     }
@@ -275,13 +457,13 @@ namespace ILGPU.IR.Values
             IRContext context,
             BasicBlock basicBlock,
             ValueReference condition,
-            BasicBlock trueTarget,
-            BasicBlock falseTarget)
+            BranchTarget trueTarget,
+            BranchTarget falseTarget)
             : base(
                   ValueKind.ConditionalBranch,
                   context,
                   basicBlock,
-                  ImmutableArray.Create(trueTarget, falseTarget),
+                  ImmutableArray.Create<ValueReference>(trueTarget, falseTarget),
                   ImmutableArray.Create(condition))
         {
             Debug.Assert(
@@ -302,12 +484,12 @@ namespace ILGPU.IR.Values
         /// <summary>
         /// Returns the true jump target.
         /// </summary>
-        public BasicBlock TrueTarget => Targets[0];
+        public BranchTarget TrueTarget => Targets[0];
 
         /// <summary>
         /// Returns the false jump target.
         /// </summary>
-        public BasicBlock FalseTarget => Targets[1];
+        public BranchTarget FalseTarget => Targets[1];
 
         #endregion
 
@@ -317,8 +499,8 @@ namespace ILGPU.IR.Values
         protected internal override Value Rebuild(IRBuilder builder, IRRebuilder rebuilder) =>
             builder.CreateConditionalBranch(
                 rebuilder.Rebuild(Condition),
-                rebuilder.LookupTarget(TrueTarget),
-                rebuilder.LookupTarget(FalseTarget));
+                rebuilder.RebuildAs<BranchTarget>(TrueTarget),
+                rebuilder.RebuildAs<BranchTarget>(FalseTarget));
 
         /// <summary cref="Value.Accept"/>
         public override void Accept<T>(T visitor) => visitor.Visit(this);
@@ -355,7 +537,7 @@ namespace ILGPU.IR.Values
             IRContext context,
             BasicBlock basicBlock,
             ValueReference value,
-            ImmutableArray<BasicBlock> targets)
+            ImmutableArray<ValueReference> targets)
             : base(
                   ValueKind.SwitchBranch,
                   context,
@@ -381,12 +563,12 @@ namespace ILGPU.IR.Values
         /// <summary>
         /// Returns the default block.
         /// </summary>
-        public BasicBlock DefaultBlock => Targets[0];
+        public BranchTarget DefaultBlock => Targets[0];
 
         /// <summary>
         /// Returns the number of actual switch cases without the default case.
         /// </summary>
-        public int NumCasesWithoutDefault => Targets.Length - 1;
+        public int NumCasesWithoutDefault => Targets.Count - 1;
 
         #endregion
 
@@ -399,18 +581,18 @@ namespace ILGPU.IR.Values
         /// <returns>The resulting jump target.</returns>
         [SuppressMessage("Microsoft.Usage", "CA2233: OperationsShouldNotOverflow",
             Justification = "Exception checks avoided for performance reasons")]
-        public BasicBlock GetCaseTarget(int i)
+        public BranchTarget GetCaseTarget(int i)
         {
-            Debug.Assert(i < Targets.Length - 1, "Invalid case argument");
+            Debug.Assert(i < Targets.Count - 1, "Invalid case argument");
             return Targets[i + 1];
         }
 
         /// <summary cref="Value.Rebuild(IRBuilder, IRRebuilder)"/>
         protected internal override Value Rebuild(IRBuilder builder, IRRebuilder rebuilder)
         {
-            var targets = ImmutableArray.CreateBuilder<BasicBlock>(Targets.Length);
+            var targets = ImmutableArray.CreateBuilder<ValueReference>(Targets.Count);
             foreach (var target in Targets)
-                targets.Add(rebuilder.LookupTarget(target));
+                targets.Add(rebuilder.Rebuild(target));
 
             return builder.CreateSwitchBranch(
                 rebuilder.Rebuild(Condition),
@@ -433,14 +615,14 @@ namespace ILGPU.IR.Values
             var result = new StringBuilder();
             result.Append(Condition.ToString());
             result.Append(" ");
-            for (int i = 1, e = Targets.Length; i < e; ++i)
+            for (int i = 1, e = Targets.Count; i < e; ++i)
             {
-                result.Append(Targets[i].ToReferenceString());
+                result.Append(Targets[i].ToString());
                 if (i + 1 < e)
                     result.Append(", ");
             }
             result.Append(" - default: ");
-            result.Append(Targets[0].ToReferenceString());
+            result.Append(DefaultBlock.ToString());
             return result.ToString();
         }
 
@@ -463,7 +645,7 @@ namespace ILGPU.IR.Values
         internal BuilderTerminator(
             IRContext context,
             BasicBlock basicBlock,
-            ImmutableArray<BasicBlock> targets)
+            ImmutableArray<ValueReference> targets)
             : base(
                   ValueKind.BuilderTerminator,
                   context,
@@ -495,7 +677,7 @@ namespace ILGPU.IR.Values
         protected override string ToArgString()
         {
             var result = new StringBuilder();
-            for (int i = 0, e = Targets.Length; i < e; ++i)
+            for (int i = 0, e = Targets.Count; i < e; ++i)
             {
                 result.Append(Targets[i].ToReferenceString());
                 if (i + 1 < e)

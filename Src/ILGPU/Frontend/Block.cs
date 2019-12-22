@@ -125,10 +125,10 @@ namespace ILGPU.Frontend
         /// <param name="count">The number of expected branch targets.</param>
         /// <returns>The resolved branch targets.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ImmutableArray<BasicBlock> GetBuilderTerminator(int count)
+        public TerminatorValue.TargetCollection GetBuilderTerminator(int count)
         {
             var targets = ((BuilderTerminator)Terminator).Targets;
-            Debug.Assert(targets.Length == count, "Invalid number of branch targets");
+            Debug.Assert(targets.Count == count, "Invalid number of branch targets");
             return targets;
         }
 

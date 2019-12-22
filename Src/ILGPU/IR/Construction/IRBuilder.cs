@@ -241,18 +241,18 @@ namespace ILGPU.IR.Construction
         }
 
         /// <summary>
-        /// Creates an instantiated phi value.
-        /// </summary>
-        /// <param name="phiValue">The phi value to create.</param>
-        /// <returns>The created node.</returns>
-        protected abstract PhiValue CreatePhiValue(PhiValue phiValue);
-
-        /// <summary>
         /// Creates an instantiated terminator.
         /// </summary>
-        /// <param name="node">The terminator to create.</param>
+        /// <param name="node">The terminator to use.</param>
         /// <returns>The created node.</returns>
         protected abstract TerminatorValue CreateTerminator(TerminatorValue node);
+
+        /// <summary>
+        /// Is invoked when a new branch target has been created in the context
+        /// of the current basic block.
+        /// </summary>
+        /// <param name="builder">The created branch target builder.</param>
+        protected virtual void OnCreateBranchTarget(BranchTarget.Builder builder) { }
 
         /// <summary>
         /// Append a new value.

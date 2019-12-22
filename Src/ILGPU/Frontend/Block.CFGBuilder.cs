@@ -214,12 +214,10 @@ namespace ILGPU.Frontend
             {
                 foreach (var entry in successorMapping)
                 {
-                    var successorBuilder = ImmutableArray.CreateBuilder<BasicBlock>(
-                        entry.Value.Count);
+                    var successors = new List<BasicBlock>(entry.Value.Count);
                     foreach (var target in entry.Value)
-                        successorBuilder.Add(target.BasicBlock);
+                        successors.Add(target.BasicBlock);
 
-                    var successors = successorBuilder.MoveToImmutable();
                     var block = entry.Key;
                     block.Builder.CreateBuilderTerminator(successors);
                 }
@@ -228,7 +226,7 @@ namespace ILGPU.Frontend
                 foreach (var block in blockMapping.Values)
                 {
                     if (!successorMapping.ContainsKey(block))
-                        block.Builder.CreateBuilderTerminator(ImmutableArray<BasicBlock>.Empty);
+                        block.Builder.CreateBuilderTerminator();
                 }
             }
 

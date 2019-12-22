@@ -15,6 +15,12 @@ namespace ILGPU.Backends.PTX
 {
     partial class PTXCodeGenerator
     {
+        /// <summary cref="IValueVisitor.Visit(BranchTarget)"/>
+        public void Visit(BranchTarget target)
+        {
+            // We do not have to map a branch target here
+        }
+
         /// <summary cref="IValueVisitor.Visit(ReturnTerminator)"/>
         public void Visit(ReturnTerminator returnTerminator)
         {
@@ -31,7 +37,7 @@ namespace ILGPU.Backends.PTX
         {
             using (var command = BeginCommand(PTXInstructions.BranchOperation))
             {
-                var targetLabel = blockLookup[branch.Target];
+                var targetLabel = GetTargetLabel(branch.Target);
                 command.AppendLabel(targetLabel);
             }
         }
@@ -44,14 +50,14 @@ namespace ILGPU.Backends.PTX
                 PTXInstructions.BranchOperation,
                 new PredicateConfiguration(condition, true)))
             {
-                var trueLabel = blockLookup[branch.TrueTarget];
+                var trueLabel = GetTargetLabel(branch.TrueTarget);
                 command.AppendLabel(trueLabel);
             }
 
             // Jump to false target in the else case
             using (var command = BeginCommand(PTXInstructions.BranchOperation))
             {
-                var targetLabel = blockLookup[branch.FalseTarget];
+                var targetLabel = GetTargetLabel(branch.FalseTarget);
                 command.AppendLabel(targetLabel);
             }
         }
@@ -88,7 +94,7 @@ namespace ILGPU.Backends.PTX
                         PTXInstructions.BranchOperation,
                         new PredicateConfiguration(upperBoundsScope.PredicateRegister, true)))
                     {
-                        var defaultTarget = blockLookup[branch.DefaultBlock];
+                        var defaultTarget = GetTargetLabel(branch.DefaultBlock);
                         command.AppendLabel(defaultTarget);
                     }
                 }
@@ -102,7 +108,7 @@ namespace ILGPU.Backends.PTX
             for (int i = 0, e = branch.NumCasesWithoutDefault; i < e; ++i)
             {
                 var caseTarget = branch.GetCaseTarget(i);
-                var caseLabel = blockLookup[caseTarget];
+                var caseLabel = GetTargetLabel(caseTarget);
                 Builder.Append(caseLabel);
                 if (i + 1 < e)
                     Builder.Append(", ");

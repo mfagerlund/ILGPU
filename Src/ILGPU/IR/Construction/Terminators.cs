@@ -11,6 +11,7 @@
 
 using ILGPU.IR.Values;
 using ILGPU.Util;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
 
@@ -41,17 +42,48 @@ namespace ILGPU.IR.Construction
         }
 
         /// <summary>
+        /// Creates a new branch target builder.
+        /// </summary>
+        /// <param name="targetBlock">The actual branch target block to jump to.</param>
+        /// <returns>The created target builder.</returns>
+        public BranchTarget.Builder CreateBranchTarget(BasicBlock targetBlock)
+        {
+            Debug.Assert(targetBlock != null, "Invalid basic block");
+            var branchTarget = new BranchTarget(
+                BasicBlock,
+                targetBlock,
+                VoidType);
+            Context.Create(branchTarget);
+            var builder = new BranchTarget.Builder(branchTarget);
+            OnCreateBranchTarget(builder);
+            return builder;
+        }
+
+        /// <summary>
         /// Creates a new unconditional branch.
         /// </summary>
         /// <param name="target">The target block.</param>
         /// <returns>The created terminator.</returns>
-        public TerminatorValue CreateUnconditionalBranch(BasicBlock target)
+        public Branch CreateUnconditionalBranch(BasicBlock target)
+        {
+            var branchTarget = CreateBranchTarget(target);
+            var branch = CreateUnconditionalBranch(branchTarget.Target);
+            branchTarget.Seal();
+            return branch;
+        }
+
+        /// <summary>
+        /// Creates a new unconditional branch.
+        /// </summary>
+        /// <param name="target">The branch target.</param>
+        /// <returns>The created terminator.</returns>
+        public Branch CreateUnconditionalBranch(BranchTarget target)
         {
             Debug.Assert(target != null, "Invalid target");
             return CreateTerminator(new UnconditionalBranch(
                 Context,
                 BasicBlock,
-                target));
+                target)) as Branch;
         }
 
         /// <summary>
@@ -61,10 +93,33 @@ namespace ILGPU.IR.Construction
         /// <param name="trueTarget">The true target block.</param>
         /// <param name="falseTarget">The false target block.</param>
         /// <returns>The created terminator.</returns>
-        public TerminatorValue CreateConditionalBranch(
+        public Branch CreateConditionalBranch(
             Value condition,
             BasicBlock trueTarget,
             BasicBlock falseTarget)
+        {
+            var trueBranchTarget = CreateBranchTarget(trueTarget);
+            var falseBranchTarget = CreateBranchTarget(falseTarget);
+            var branch = CreateConditionalBranch(
+                condition,
+                trueBranchTarget.Target,
+                falseBranchTarget.Target);
+            trueBranchTarget.Seal();
+            falseBranchTarget.Seal();
+            return branch;
+        }
+
+        /// <summary>
+        /// Creates a new conditional branch.
+        /// </summary>
+        /// <param name="condition">The branch condition.</param>
+        /// <param name="trueTarget">The true branch target.</param>
+        /// <param name="falseTarget">The false branch target.</param>
+        /// <returns>The created terminator.</returns>
+        public Branch CreateConditionalBranch(
+            Value condition,
+            BranchTarget trueTarget,
+            BranchTarget falseTarget)
         {
             Debug.Assert(condition != null, "Invalid condition");
             Debug.Assert(trueTarget != null, "Invalid true target");
@@ -75,7 +130,7 @@ namespace ILGPU.IR.Construction
                 BasicBlock,
                 condition,
                 trueTarget,
-                falseTarget));
+                falseTarget)) as Branch;
         }
 
         /// <summary>
@@ -84,9 +139,9 @@ namespace ILGPU.IR.Construction
         /// <param name="value">The selection value.</param>
         /// <param name="targets">All switch targets.</param>
         /// <returns>The created terminator.</returns>
-        public TerminatorValue CreateSwitchBranch(
+        public Branch CreateSwitchBranch(
             Value value,
-            ImmutableArray<BasicBlock> targets)
+            ImmutableArray<ValueReference> targets)
         {
             Debug.Assert(value != null, "Invalid value node");
             Debug.Assert(value.BasicValueType.IsInt(), "Invalid value type");
@@ -99,29 +154,47 @@ namespace ILGPU.IR.Construction
             {
                 return CreateConditionalBranch(
                     CreateCompare(value, CreatePrimitiveValue(0), CompareKind.Equal),
-                    targets[0],
-                    targets[1]);
+                    targets[0].ResolveAs<BranchTarget>(),
+                    targets[1].ResolveAs<BranchTarget>());
             }
 
             return CreateTerminator(new SwitchBranch(
                 Context,
                 BasicBlock,
                 value,
-                targets));
+                targets)) as Branch;
         }
+
+        /// <summary>
+        /// Creates a temporary builder terminator.
+        /// </summary>
+        /// <param name="targetBlocks">All branch target blocks.</param>
+        /// <returns>The created terminator.</returns>
+        public Branch CreateBuilderTerminator<TCollection>(TCollection targetBlocks)
+            where TCollection : IReadOnlyList<BasicBlock>
+        {
+            var targets = ImmutableArray.CreateBuilder<ValueReference>(targetBlocks.Count);
+            for (int i = 0, e = targetBlocks.Count; i < e; ++i)
+                targets.Add(CreateBranchTarget(targetBlocks[i]).Seal());
+            return CreateBuilderTerminator(targets.MoveToImmutable());
+        }
+
+        /// <summary>
+        /// Creates an empty temporary builder terminator.
+        /// </summary>
+        /// <returns>The created empty terminator.</returns>
+        public Branch CreateBuilderTerminator() =>
+            CreateBuilderTerminator(ImmutableArray<ValueReference>.Empty);
 
         /// <summary>
         /// Creates a temporary builder terminator.
         /// </summary>
         /// <param name="targets">All branch targets.</param>
         /// <returns>The created terminator.</returns>
-        public BuilderTerminator CreateBuilderTerminator(
-            ImmutableArray<BasicBlock> targets)
-        {
-            return CreateTerminator(new BuilderTerminator(
+        public Branch CreateBuilderTerminator(ImmutableArray<ValueReference> targets) =>
+            CreateTerminator(new BuilderTerminator(
                 Context,
                 BasicBlock,
-                targets)) as BuilderTerminator;
-        }
+                targets)) as Branch;
     }
 }

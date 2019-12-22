@@ -15,6 +15,12 @@ namespace ILGPU.Backends.OpenCL
 {
     partial class CLCodeGenerator
     {
+        /// <summary cref="IValueVisitor.Visit(BranchTarget)"/>
+        public void Visit(BranchTarget target)
+        {
+            // We do not have to map a branch target here
+        }
+
         /// <summary cref="IValueVisitor.Visit(ReturnTerminator)"/>
         public void Visit(ReturnTerminator returnTerminator)
         {

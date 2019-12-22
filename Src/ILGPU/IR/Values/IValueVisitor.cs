@@ -301,6 +301,12 @@ namespace ILGPU.IR.Values
         /// <summary>
         /// Visits the node.
         /// </summary>
+        /// <param name="target">The branch target.</param>
+        void Visit(BranchTarget target);
+
+        /// <summary>
+        /// Visits the node.
+        /// </summary>
         /// <param name="returnTerminator">The node.</param>
         void Visit(ReturnTerminator returnTerminator);
 
