@@ -356,7 +356,7 @@ namespace ILGPU.IR.Analyses
                     }
                 }
 
-                if (current.Child >= currentBlock.Successors.Length)
+                if (current.Child >= currentBlock.NumSuccessors)
                 {
                     result.Add(currentBlock);
                     goto next;

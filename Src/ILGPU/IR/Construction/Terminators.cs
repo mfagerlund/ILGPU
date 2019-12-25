@@ -67,9 +67,7 @@ namespace ILGPU.IR.Construction
         public Branch CreateUnconditionalBranch(BasicBlock target)
         {
             var branchTarget = CreateBranchTarget(target);
-            var branch = CreateUnconditionalBranch(branchTarget.Target);
-            branchTarget.Seal();
-            return branch;
+            return CreateUnconditionalBranch(branchTarget.Target);
         }
 
         /// <summary>
@@ -100,13 +98,10 @@ namespace ILGPU.IR.Construction
         {
             var trueBranchTarget = CreateBranchTarget(trueTarget);
             var falseBranchTarget = CreateBranchTarget(falseTarget);
-            var branch = CreateConditionalBranch(
+            return CreateConditionalBranch(
                 condition,
                 trueBranchTarget.Target,
                 falseBranchTarget.Target);
-            trueBranchTarget.Seal();
-            falseBranchTarget.Seal();
-            return branch;
         }
 
         /// <summary>
@@ -175,7 +170,7 @@ namespace ILGPU.IR.Construction
         {
             var targets = ImmutableArray.CreateBuilder<ValueReference>(targetBlocks.Count);
             for (int i = 0, e = targetBlocks.Count; i < e; ++i)
-                targets.Add(CreateBranchTarget(targetBlocks[i]).Seal());
+                targets.Add(CreateBranchTarget(targetBlocks[i]).Target);
             return CreateBuilderTerminator(targets.MoveToImmutable());
         }
 

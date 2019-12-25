@@ -103,9 +103,9 @@ namespace ILGPU.IR.Analyses
             EntryBlock.Successors[0] == IfBlock &&
             EntryBlock.Successors[1] == ElseBlock &&
             // Check direct connection of the exit node
-            IfBlock.Successors.Length == 1 &&
+            IfBlock.Successors.Count == 1 &&
             IfBlock.Successors[0] == ExitBlock &&
-            ElseBlock.Successors.Length == 1 &&
+            ElseBlock.Successors.Count == 1 &&
             ElseBlock.Successors[0] == ExitBlock;
 
         /// <summary>
@@ -121,8 +121,7 @@ namespace ILGPU.IR.Analyses
         /// Resolves detailed variable information.
         /// </summary>
         /// <returns>The resolved variable information.</returns>
-        public IfVariableInfo ResolveVariableInfo() =>
-            new IfVariableInfo(this);
+        public IfVariableInfo ResolveVariableInfo() => new IfVariableInfo(this);
 
         #endregion
     }
@@ -133,7 +132,7 @@ namespace ILGPU.IR.Analyses
     /// </summary>
     [SuppressMessage("Microsoft.Naming", "CA1710: IdentifiersShouldHaveCorrectSuffix",
         Justification = "This is a single variable information object; adding a collection suffix would be misleading")]
-    public readonly struct IfVariableInfo : IReadOnlyCollection<KeyValuePair<PhiValue, IfVariableInfo.Variable>>
+    public readonly struct IfVariableInfo : IReadOnlyCollection<IfVariableInfo.Variable>
     {
         #region Nested Types
 
@@ -145,21 +144,20 @@ namespace ILGPU.IR.Analyses
             /// <summary>
             /// Constructs a new variable.
             /// </summary>
-            /// <param name="trueValue">The true value.</param>
-            internal Variable(Value trueValue)
-                : this(trueValue, null)
-            { }
-
-            /// <summary>
-            /// Constructs a new variable.
-            /// </summary>
+            /// <param name="parameter">The source parameter.</param>
             /// <param name="trueValue">The true value.</param>
             /// <param name="falseValue">The false value.</param>
-            private Variable(Value trueValue, Value falseValue)
+            internal Variable(Parameter parameter, Value trueValue, Value falseValue)
             {
+                Parameter = parameter;
                 TrueValue = trueValue;
                 FalseValue = falseValue;
             }
+
+            /// <summary>
+            /// Returns the associated block parameter.
+            /// </summary>
+            public Parameter Parameter { get; }
 
             /// <summary>
             /// The value from the true branch.
@@ -170,21 +168,14 @@ namespace ILGPU.IR.Analyses
             /// The value from the false branch.
             /// </summary>
             public Value FalseValue { get; }
-
-            internal Variable AddFalseValue(Value falseValue)
-            {
-                Debug.Assert(FalseValue == null, "False value already specified");
-                return new Variable(TrueValue, falseValue);
-            }
         }
 
         /// <summary>
         /// An enumerator to iterate over all variables.
         /// </summary>
-        public struct Enumerator : IEnumerator<KeyValuePair<PhiValue, Variable>>
+        public struct Enumerator : IEnumerator<Variable>
         {
-            private readonly Dictionary<PhiValue, Variable> variablesInfo;
-            private List<PhiValue>.Enumerator enumerator;
+            private List<Variable>.Enumerator enumerator;
 
             /// <summary>
             /// Constructs a new variable enumerator.
@@ -193,24 +184,13 @@ namespace ILGPU.IR.Analyses
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal Enumerator(in IfVariableInfo info)
             {
-                variablesInfo = info.variablesInfo;
-                enumerator = info.variables.GetEnumerator();
+                enumerator = info.variablesInfo.GetEnumerator();
             }
 
             /// <summary>
-            /// Returns the current info.
+            /// Returns the current variable.
             /// </summary>
-            public KeyValuePair<PhiValue, Variable> Current
-            {
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get
-                {
-                    var currentEntry = enumerator.Current;
-                    return new KeyValuePair<PhiValue, Variable>(
-                        currentEntry,
-                        variablesInfo[currentEntry]);
-                }
-            }
+            public Variable Current => enumerator.Current;
 
             /// <summary cref="IEnumerator.Current"/>
             object IEnumerator.Current => Current;
@@ -231,8 +211,7 @@ namespace ILGPU.IR.Analyses
         #region Instance
 
         private readonly HashSet<Value> variableValues;
-        private readonly Dictionary<PhiValue, Variable> variablesInfo;
-        private readonly List<PhiValue> variables;
+        private readonly List<Variable> variablesInfo;
 
         /// <summary>
         /// Constructs a new detailed variable information instance.
@@ -241,47 +220,23 @@ namespace ILGPU.IR.Analyses
         internal IfVariableInfo(in IfInfo ifInfo)
         {
             Debug.Assert(ifInfo.HasElseBlock, "Invalid variable information");
-            int capacity = IntrinsicMath.Max(
-                ifInfo.IfBlock.Count,
-                ifInfo.ElseBlock.Count);
 
             variableValues = new HashSet<Value>();
-            variablesInfo = new Dictionary<PhiValue, Variable>(capacity);
-            variables = new List<PhiValue>(capacity);
+            Parameters = ifInfo.ExitBlock.Parameters;
+            variablesInfo = new List<Variable>(Parameters.Count);
 
-            // Link if block
-            foreach (Value value in ifInfo.IfBlock)
+            // Link values
+            var ifArguments = ifInfo.IfBlock.GetTerminatorAs<Branch>().Arguments;
+            var elseArguments  = ifInfo.ElseBlock.GetTerminatorAs<Branch>().Arguments;
+            for (int i = 0, e = Parameters.Count; i < e; ++i)
             {
-                foreach (var use in value.Uses)
-                {
-                    if (use.Resolve() is PhiValue phiValue &&
-                        phiValue.Nodes.Length == 2)
-                    {
-                        Debug.Assert(
-                            !variablesInfo.ContainsKey(phiValue),
-                            "Invalid variable linking");
+                variableValues.Add(ifArguments[i]);
+                variableValues.Add(elseArguments[i]);
 
-                        variableValues.Add(value);
-                        variablesInfo.Add(phiValue, new Variable(value));
-                        variables.Add(phiValue);
-                    }
-                }
-            }
-
-            // Link else block
-            foreach (Value value in ifInfo.ElseBlock)
-            {
-                foreach (var use in value.Uses)
-                {
-                    // Does this phi belong to this if?
-                    if (use.Resolve() is PhiValue phiValue &&
-                        phiValue.Nodes.Length == 2 &&
-                        variablesInfo.TryGetValue(phiValue, out var entry))
-                    {
-                        variableValues.Add(value);
-                        variablesInfo[phiValue] = entry.AddFalseValue(value);
-                    }
-                }
+                variablesInfo.Add(new Variable(
+                    Parameters[i],
+                    ifArguments[i],
+                    elseArguments[i]));
             }
         }
 
@@ -290,9 +245,14 @@ namespace ILGPU.IR.Analyses
         #region Properties
 
         /// <summary>
-        /// Returns the number of phi values.
+        /// All associated relevant block parameters.
         /// </summary>
-        public int Count => variablesInfo.Count;
+        public ParameterCollection Parameters { get; }
+
+        /// <summary>
+        /// Returns the number of parameters.
+        /// </summary>
+        public int Count => Parameters.Count;
 
         #endregion
 
@@ -305,8 +265,7 @@ namespace ILGPU.IR.Analyses
         public Enumerator GetEnumerator() => new Enumerator(this);
 
         /// <summary cref="IEnumerable{T}.GetEnumerator"/>
-        IEnumerator<KeyValuePair<PhiValue, Variable>> IEnumerable<KeyValuePair<PhiValue, Variable>>.
-            GetEnumerator() => GetEnumerator();
+        IEnumerator<Variable> IEnumerable<Variable>.  GetEnumerator() => GetEnumerator();
 
         /// <summary cref="IEnumerable.GetEnumerator"/>
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -315,8 +274,7 @@ namespace ILGPU.IR.Analyses
     }
 
     /// <summary>
-    /// Inferes high-level control-flow ifs
-    /// from unstructred low-level control flow.
+    /// Infers high-level control-flow ifs from unstructured low-level control flow.
     /// </summary>
     [SuppressMessage("Microsoft.Naming", "CA1710: IdentifiersShouldHaveCorrectSuffix",
         Justification = "This is the correct name of this program analysis")]

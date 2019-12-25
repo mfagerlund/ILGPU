@@ -83,17 +83,13 @@ namespace ILGPU.IR
             /// </summary>
             public Builder Parent { get; }
 
-            /// <summary cref="BranchTarget.IArgumentMapper.CanMapBlockArgument(BasicBlock, int)"/>
+            /// <summary cref="BranchTarget.IArgumentMapper.CanMapBlockArgument(BranchTarget, int)"/>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public bool CanMapBlockArgument(BasicBlock block, int argumentIndex)
+            public bool CanMapBlockArgument(BranchTarget target, int argumentIndex)
             {
-                foreach (var successor in block.Successors)
-                {
-                    if (successor.TryGetBuilder(out var builder) &&
-                        builder.Parameters[argumentIndex].IsReplaced)
-                        return false;
-                }
-                return true;
+                if (!target.TargetBlock.TryGetBuilder(out var builder))
+                    return true;
+                return !builder.Parameters[argumentIndex].IsReplaced;
             }
         }
 
@@ -360,6 +356,10 @@ namespace ILGPU.IR
                 {
                     // Dispose the parameter builder
                     Parameters.Dispose();
+
+                    // Cleanup all basic block builders
+                    foreach (var builder in basicBlockBuilders)
+                        builder.MapChangedArguments(new ArgumentMapper(this));
 
                     // Dispose all basic block builders
                     foreach (var builder in basicBlockBuilders)

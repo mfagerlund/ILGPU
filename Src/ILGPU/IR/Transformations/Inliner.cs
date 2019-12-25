@@ -101,10 +101,10 @@ namespace ILGPU.IR.Transformations
                     }
 
                     var successors = currentBlock.Successors;
-                    if (successors.Length > 0)
+                    if (successors.Count > 0)
                     {
                         currentBlock = successors[0];
-                        for (int i = 1, e = successors.Length; i < e; ++i)
+                        for (int i = 1, e = successors.Count; i < e; ++i)
                             toProcess.Push(successors[1]);
                         continue;
                     }

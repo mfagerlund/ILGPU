@@ -127,6 +127,26 @@ namespace ILGPU.IR.Values
             /// <returns>An array containing value references to all targets.</returns>
             public ImmutableArray<ValueReference> ToImmutableArray() => RawTargets;
 
+            /// <summary>
+            /// Tries to get the branch target for the given block.
+            /// </summary>
+            /// <param name="block">The block to look for.</param>
+            /// <param name="blockTarget">The branch target (if any).</param>
+            /// <returns>True, if the block could be found.</returns>
+            public bool TryGetTarget(BasicBlock block, out BranchTarget blockTarget)
+            {
+                foreach (var target in this)
+                {
+                    if (target.TargetBlock == block)
+                    {
+                        blockTarget = target;
+                        return true;
+                    }
+                }
+                blockTarget = null;
+                return false;
+            }
+
             #endregion
 
             #region IEnumerable
@@ -239,7 +259,7 @@ namespace ILGPU.IR.Values
         protected new void Seal(ImmutableArray<ValueReference> arguments)
         {
             Arguments = arguments;
-            base.Seal(RawTargets.AddRange(arguments));
+            base.Seal(arguments.AddRange(RawTargets));
         }
 
         #endregion
@@ -514,7 +534,7 @@ namespace ILGPU.IR.Values
 
         /// <summary cref="Value.ToArgString"/>
         protected override string ToArgString() =>
-            $"{Condition} ? {TrueTarget.ToReferenceString()} : {FalseTarget.ToReferenceString()}";
+            $"{Condition} ? {TrueTarget.ToString()} : {FalseTarget.ToString()}";
 
         #endregion
     }

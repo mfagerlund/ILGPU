@@ -66,8 +66,8 @@ namespace ILGPU.IR.Transformations
                         // We cannot remove casts to other address spaces in case
                         // of a method invocation.
                         return false;
-                    case PhiValue _:
-                        // We are not allowed to remove casts from phi node operands.
+                    case Branch _:
+                        // We are not allowed to remove casts from branch operands.
                         return false;
                     case Store _:
                         // We are not allowed to remove casts in the case of

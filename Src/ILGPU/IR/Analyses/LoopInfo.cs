@@ -120,32 +120,37 @@ namespace ILGPU.IR.Analyses
         /// to an induction variable.
         /// </summary>
         /// <param name="scc">The related SCC.</param>
-        /// <param name="variableIndex">The variable index.</param>
-        /// <param name="visitedNodes">The set of already visited nodes.</param>
-        /// <param name="phiValue">The current phi value.</param>
+        /// <param name="entryNode">The current entry CFG node.</param>
+        /// <param name="passedValues">The set of passed values.</param>
+        /// <param name="parameterIndex">The variable index.</param>
         /// <param name="inductionVariable">The resolved induction variable (if any).</param>
         /// <returns>True, if the given phi node could be resolved to an induction variable.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool TryResolveInductionVariable(
             in SCCs.SCC scc,
-            int variableIndex,
-            HashSet<Node> visitedNodes,
-            PhiValue phiValue,
+            CFG.Node entryNode,
+            HashSet<Value> passedValues,
+            int parameterIndex,
             out InductionVariable inductionVariable)
         {
-            // Search for two operands of which one is defined
-            // outside the current SCC and one is from the
-            // inside of the current SCC
+            // Search for two operands of which one is defined outside the current SCC
+            // and one is from the inside of the current SCC
             inductionVariable = default;
-            int numOperands = phiValue.Nodes.Length;
-            if (numOperands != 2)
+            passedValues.Clear();
+            foreach (var pred in entryNode.Predecessors)
+            {
+                pred.Block.SuccessorTargets.TryGetTarget(entryNode.Block, out var target);
+                passedValues.Add(target[parameterIndex]);
+            }
+
+            // Check whether this could be an induction variable
+            if (passedValues.Count != 2)
                 return false;
 
             Value outsideOperand = null;
             Value insideOperand = null;
-            for (int i = 0; i < numOperands; ++i)
+            foreach (var operand in passedValues)
             {
-                Value operand = phiValue.Nodes[i];
                 if (!scc.Contains(operand.BasicBlock))
                     outsideOperand = operand;
                 else
@@ -155,65 +160,18 @@ namespace ILGPU.IR.Analyses
             if (insideOperand == null | outsideOperand == null)
                 return false;
 
-            // Check the influcence of the inside operand
-            // on the overall break behavior
-            bool foundBranch = false;
-            foreach (var use in phiValue.Uses)
-            {
-                var node = use.Resolve();
-                visitedNodes.Clear();
-                if (IsInductionVariableBranch(scc, visitedNodes, node))
-                {
-                    // Check for a trivial induction branch
-                    if (foundBranch)
-                        return false;
-
-                    inductionVariable = new InductionVariable(
-                        variableIndex,
-                        phiValue,
-                        outsideOperand,
-                        insideOperand,
-                        node);
-                    foundBranch = true;
-                }
-            }
-
-            return foundBranch;
-        }
-
-        /// <summary>
-        /// Tries to trace an induction-variable branch.
-        /// </summary>
-        /// <param name="scc">The current scc.</param>
-        /// <param name="visitedNodes">The set of already visited nodes.</param>
-        /// <param name="node">The node to trace.</param>
-        /// <returns>True, if the given node is an induction-variable branch.</returns>
-        private static bool IsInductionVariableBranch(
-            in SCCs.SCC scc,
-            HashSet<Node> visitedNodes,
-            Value node)
-        {
-            if (!visitedNodes.Add(node))
+            // Check the influence of the inside operand on the overall break behavior
+            var insideBlock = insideOperand.BasicBlock;
+            if (!(insideBlock.Terminator is Branch branch) || !scc.CanLeaveSCC(branch))
                 return false;
 
-            // Try to find a conditional branch that leaves the current scc
-            if (node is Branch branch && branch.NumTargets > 1)
-            {
-                foreach (var target in branch.Targets)
-                {
-                    if (!scc.Contains(target))
-                        return true;
-                }
-            }
-
-            // Iterate over all uses to find a recursive trace
-            foreach (var use in node.Uses)
-            {
-                if (IsInductionVariableBranch(scc, visitedNodes, use.Resolve()))
-                    return true;
-            }
-
-            return false;
+            inductionVariable = new InductionVariable(
+                parameterIndex,
+                entryNode.Block.Parameters[parameterIndex],
+                outsideOperand,
+                insideOperand,
+                branch.Arguments[0]);
+            return true;
         }
 
         #endregion
@@ -236,18 +194,20 @@ namespace ILGPU.IR.Analyses
             EntryBlock = entryBlock;
             ExitBlock = exitBlock;
 
-            var phis = scc.ResolvePhis();
+            // Look for branches that jump to the entry block and remember every value
+            var inductionVariables = ImmutableArray.CreateBuilder<InductionVariable>(
+                entryBlock.NumParameters);
+            var entryNode = scc.Parent.CFG[entryBlock];
+            var passedValues = new HashSet<Value>();
 
-            var inductionVariables = ImmutableArray.CreateBuilder<InductionVariable>(phis.Count);
-            var visitedNodes = new HashSet<Node>();
-            foreach (var phi in phis)
+            for (int i = 0, e = entryBlock.NumParameters; i < e; ++i)
             {
-                // Check whether this phi is an induction variable
+                // Check whether this parameter is an induction variable
                 if (TryResolveInductionVariable(
                     scc,
-                    inductionVariables.Count,
-                    visitedNodes,
-                    phi,
+                    entryNode,
+                    passedValues,
+                    i,
                     out var variable))
                 {
                     inductionVariables.Add(variable);
@@ -295,8 +255,7 @@ namespace ILGPU.IR.Analyses
     }
 
     /// <summary>
-    /// Inferes high-level control-flow loops
-    /// from unstructred low-level control flow.
+    /// Infers high-level control-flow loops from unstructured low-level control flow.
     /// </summary>
     [SuppressMessage("Microsoft.Naming", "CA1710: IdentifiersShouldHaveCorrectSuffix",
         Justification = "This is the correct name of this program analysis")]
@@ -577,20 +536,20 @@ namespace ILGPU.IR.Analyses
         /// Constructs a new induction variable.
         /// </summary>
         /// <param name="index">The variable index.</param>
-        /// <param name="phi">The phi node.</param>
+        /// <param name="blockParameter">The block parameter.</param>
         /// <param name="init">The init value.</param>
         /// <param name="update">The update value.</param>
         /// <param name="breakCondition">The break condition.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal InductionVariable(
             int index,
-            PhiValue phi,
+            Parameter blockParameter,
             ValueReference init,
             ValueReference update,
             ValueReference breakCondition)
         {
             Index = index;
-            Phi = phi;
+            Parameter = blockParameter;
             Init = init;
             Update = update;
             BreakCondition = breakCondition;
@@ -606,9 +565,9 @@ namespace ILGPU.IR.Analyses
         public int Index { get; }
 
         /// <summary>
-        /// Returns the associated phi value.
+        /// Returns the associated block parameter.
         /// </summary>
-        public PhiValue Phi { get; }
+        public Parameter Parameter { get; }
 
         /// <summary>
         /// Returns a link to the init expression.
@@ -671,7 +630,7 @@ namespace ILGPU.IR.Analyses
                 !compareValue.BasicValueType.IsInt())
                 return false;
 
-            int endValueIndex = compareValue.Left.Resolve() == Phi ? 1 : 0;
+            int endValueIndex = compareValue.Left.Resolve() == Parameter ? 1 : 0;
             var resolvedEndValue = compareValue[endValueIndex].Resolve();
 
             // Resolve the break operation
@@ -692,7 +651,7 @@ namespace ILGPU.IR.Analyses
         {
             bounds = default;
 
-            // Try to resolve init and update oeration
+            // Try to resolve init and update operation
             if (!TryResolveUpdateOperation(out var updateOperation) ||
                 !TryResolveBreakOperation(out var breakOperation))
                 return false;

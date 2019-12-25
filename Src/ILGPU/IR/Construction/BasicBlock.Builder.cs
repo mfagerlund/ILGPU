@@ -196,6 +196,15 @@ namespace ILGPU.IR
                 SetupBranchBuilder().MapArguments(mapper);
 
             /// <summary>
+            /// Maps all block arguments using the given mapper.
+            /// </summary>
+            /// <typeparam name="TMapper">The mapper type.</typeparam>
+            /// <param name="mapper">The mapper instance to use.</param>
+            internal void MapChangedArguments<TMapper>(TMapper mapper)
+                where TMapper : BranchTarget.IArgumentMapper =>
+                targetBuilders.MapArguments(mapper);
+
+            /// <summary>
             /// Setups the internal branch builder.
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]

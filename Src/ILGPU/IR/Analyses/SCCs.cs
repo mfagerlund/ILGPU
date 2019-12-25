@@ -128,63 +128,6 @@ namespace ILGPU.IR.Analyses
                 void IEnumerator.Reset() => throw new InvalidOperationException();
             }
 
-            /// <summary>
-            /// A value enumerator to iterate over all phi values
-            /// that have a dependency on outer and inner values of this SCC.
-            /// </summary>
-            private struct PhiValueEnumerator : IEnumerator<Value>
-            {
-                private ValueEnumerator enumerator;
-
-                /// <summary>
-                /// Constructs a new value enumerator.
-                /// </summary>
-                /// <param name="parent">The parent SCC.</param>
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                internal PhiValueEnumerator(SCC parent)
-                {
-                    Parent = parent;
-                    enumerator = parent.GetValueEnumerator();
-                }
-
-                /// <summary>
-                /// The parent SCCs.
-                /// </summary>
-                public SCC Parent { get; }
-
-                /// <summary>
-                /// Returns the current value.
-                /// </summary>
-                public Value Current => enumerator.Current;
-
-                /// <summary cref="IEnumerator.Current"/>
-                object IEnumerator.Current => Current;
-
-                /// <summary cref="IDisposable.Dispose"/>
-                public void Dispose() => enumerator.Dispose();
-
-                /// <summary cref="IEnumerator.MoveNext"/>
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public bool MoveNext()
-                {
-                    while (enumerator.MoveNext())
-                    {
-                        if (enumerator.Current is PhiValue phiValue)
-                        {
-                            foreach (Value operand in phiValue.Nodes)
-                            {
-                                if (!Parent.Contains(operand.BasicBlock))
-                                    return true;
-                            }
-                        }
-                    }
-                    return false;
-                }
-
-                /// <summary cref="IEnumerator.Reset"/>
-                void IEnumerator.Reset() => throw new InvalidOperationException();
-            }
-
             #endregion
 
             #region Instance
@@ -263,13 +206,21 @@ namespace ILGPU.IR.Analyses
             public bool Contains(CFG.Node node) => Contains(node.Block);
 
             /// <summary>
-            /// Resolves all <see cref="PhiValue"/>s that are contained
-            /// in this SCC which reference at least one operand that is not
-            /// defined in this SCC.
+            /// Checks whether the given branch can leave this SCC.
             /// </summary>
-            /// <returns>The list of resolved phi values.</returns>
+            /// <param name="branch">The branch to analyze.</param>
+            /// <returns>True, if the given branch can leave this SCC.</returns>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public Phis ResolvePhis() => Phis.Create(new PhiValueEnumerator(this));
+            public bool CanLeaveSCC(Branch branch)
+            {
+                // Try to find a conditional branch that leaves the current scc
+                foreach (var target in branch.TargetBlocks)
+                {
+                    if (!Contains(target))
+                        return true;
+                }
+                return false;
+            }
 
             /// <summary>
             /// Resolves all blocks that can leave this SCC.

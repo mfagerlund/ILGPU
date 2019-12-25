@@ -40,10 +40,10 @@ namespace ILGPU.IR.Values
             /// This can happen when a block parameter has been replaced and does not
             /// need specific arguments any more.
             /// </summary>
-            /// <param name="block">The current block.</param>
+            /// <param name="target">The current target.</param>
             /// <param name="argumentIndex">The current argument index.</param>
             /// <returns>True, if the specified argument can be dropped.</returns>
-            bool CanMapBlockArgument(BasicBlock block, int argumentIndex);
+            bool CanMapBlockArgument(BranchTarget target, int argumentIndex);
         }
 
         /// <summary>
@@ -151,11 +151,10 @@ namespace ILGPU.IR.Values
                 if (Count < 1)
                     return;
 
-                var block = BasicBlock;
                 var newArguments = ImmutableArray.CreateBuilder<ValueReference>(Count);
                 for (int i = 0, e = Count; i < e; ++i)
                 {
-                    if (!mapper.CanMapBlockArgument(block, i))
+                    if (!mapper.CanMapBlockArgument(Target, i))
                         continue;
                     newArguments.Add(this[i]);
                 }
@@ -179,14 +178,25 @@ namespace ILGPU.IR.Values
             /// <summary>
             /// Rebuilds the associated branch target.
             /// </summary>
+            /// <param name="source">
+            /// The source branch target from which the arguments have to be copied.
+            /// </param>
             /// <param name="rebuilder">The rebuilder to use.</param>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            internal BranchTarget Rebuild(IRRebuilder rebuilder)
+            internal BranchTarget Rebuild(BranchTarget source, IRRebuilder rebuilder)
             {
                 if (IsSealed)
                     return Target;
 
-                MapArguments(rebuilder);
+                // Register all arguments
+                for (int i = 0, e = source.Nodes.Length; i < e; ++i)
+                {
+                    if (!rebuilder.CanMapBlockArgument(source, Target, i))
+                        continue;
+                    Value argumentValue = source[i];
+                    AddArgument(rebuilder.Rebuild(argumentValue));
+                }
+
                 return Seal();
             }
 
@@ -260,19 +270,35 @@ namespace ILGPU.IR.Values
             {
                 Init();
                 foreach (BranchTarget target in branch.Targets)
-                    builders[target.TargetBlock] = target.ToBuilder(Builder);
+                {
+                    if (builders.TryGetValue(target.TargetBlock, out var otherBuilder))
+                    {
+                        if (otherBuilder.Target != target)
+                        {
+                            otherBuilder.Seal();
+                            builders[target.TargetBlock] = target.ToBuilder(Builder);
+                        }
+                    }
+                    else
+                        builders[target.TargetBlock] = target.ToBuilder(Builder);
+                }
             }
 
             /// <summary>
             /// Registers the given branch builder.
             /// </summary>
             /// <param name="builder">The builder to register.</param>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Register(Builder builder)
             {
                 Debug.Assert(builder != null, "Invalid builder");
 
                 Init();
-                builders.Add(builder.TargetBlock, builder);
+
+                if (builders.TryGetValue(builder.TargetBlock, out var otherBuilder) &&
+                    otherBuilder != builder)
+                    otherBuilder.Seal();
+                builders[builder.TargetBlock] = builder;
             }
 
             /// <summary>
@@ -362,7 +388,7 @@ namespace ILGPU.IR.Values
         /// <summary cref="Value.Rebuild(IRBuilder, IRRebuilder)"/>
         protected internal override Value Rebuild(IRBuilder builder, IRRebuilder rebuilder) =>
             builder.CreateBranchTarget(
-                rebuilder.LookupTarget(TargetBlock)).Rebuild(rebuilder);
+                rebuilder.LookupTarget(TargetBlock)).Rebuild(this, rebuilder);
 
         /// <summary cref="Value.Accept"/>
         public override void Accept<T>(T visitor) => visitor.Visit(this);

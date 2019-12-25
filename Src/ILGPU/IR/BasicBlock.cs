@@ -308,13 +308,17 @@ namespace ILGPU.IR
         /// <summary>
         /// Returns all successor blocks.
         /// </summary>
-        public SuccessorCollection Successors =>
-            new SuccessorCollection(CompactTerminator().Targets);
+        public SuccessorCollection Successors => new SuccessorCollection(SuccessorTargets);
 
         /// <summary>
         /// Returns the number of successor blocks.
         /// </summary>
         public int NumSuccessors => CompactTerminator().NumTargets;
+
+        /// <summary>
+        /// Returns all underlying targets.
+        /// </summary>
+        public TerminatorValue.TargetCollection SuccessorTargets => CompactTerminator().Targets;
 
         /// <summary>
         /// Returns the number of detected blocks.
@@ -338,38 +342,9 @@ namespace ILGPU.IR
         /// </summary>
         public int NumParameters => Parameters.Count;
 
-        /// <summary>
-        /// Returns all block arguments that are passed to all successors.
-        /// </summary>
-        /// <remarks>
-        /// Note that this array will always be empty in case of a terminator
-        /// that is not a branch.
-        /// </remarks>
-        public ImmutableArray<ValueReference> Arguments
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get
-            {
-                if (CompactTerminator() is Branch branch)
-                    return branch.Arguments;
-                return ImmutableArray<ValueReference>.Empty;
-            }
-        }
-
         #endregion
 
         #region Methods
-
-        /// <summary>
-        /// Tries to get block arguments (if any).
-        /// </summary>
-        /// <param name="arguments">The determined block arguments (if any).</param>
-        /// <returns>True, if the current block has block arguments.</returns>
-        public bool TryGetArguments(out ImmutableArray<ValueReference> arguments)
-        {
-            arguments = Arguments;
-            return arguments.Length > 0;
-        }
 
         /// <summary>
         /// Checks whether this block has side effects.

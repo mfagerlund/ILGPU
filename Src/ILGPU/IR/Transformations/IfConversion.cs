@@ -94,26 +94,24 @@ namespace ILGPU.IR.Transformations
                 var variableInfo = ifInfo.ResolveVariableInfo();
 
                 var blockBuilder = builder[ifInfo.EntryBlock];
-                blockBuilder.MergeBlock(ifInfo.IfBlock);
-                blockBuilder.MergeBlock(ifInfo.ElseBlock);
-                blockBuilder.MergeBlock(ifInfo.ExitBlock);
+                blockBuilder.MergeBlock(ifInfo.IfBlock, mergeParameters: false);
+                blockBuilder.MergeBlock(ifInfo.ElseBlock, mergeParameters: false);
 
-                // Convert all phi values
+                // Convert all block arguments
                 var condition = ifInfo.Condition;
-                foreach (var variableEntry in variableInfo)
+                foreach (var variable in variableInfo)
                 {
-                    var variable = variableEntry.Value;
-
-                    blockBuilder.SetupInsertPosition(variableEntry.Key);
                     var predicate = blockBuilder.CreatePredicate(
                         condition,
                         variable.TrueValue,
                         variable.FalseValue);
 
-                    // Replace the phi node
-                    variableEntry.Key.Replace(predicate);
-                    blockBuilder.Remove(variableEntry.Key);
+                    // Replace the parameter
+                    variable.Parameter.Replace(predicate);
                 }
+
+                // Merge exit block
+                blockBuilder.MergeBlock(ifInfo.ExitBlock, mergeParameters: false);
 
                 converted = true;
             }

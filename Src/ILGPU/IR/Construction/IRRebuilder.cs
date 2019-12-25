@@ -11,7 +11,6 @@
 
 using ILGPU.IR.Analyses;
 using ILGPU.IR.Values;
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -22,7 +21,7 @@ namespace ILGPU.IR.Construction
     /// <summary>
     /// Represents an IR rebuilder to rebuild parts of the IR.
     /// </summary>
-    public sealed class IRRebuilder : BranchTarget.IArgumentMapper
+    public sealed class IRRebuilder
     {
         #region Instance
 
@@ -231,16 +230,25 @@ namespace ILGPU.IR.Construction
             where T : Value =>
             Rebuild(source) as T;
 
-        /// <summary cref="BranchTarget.IArgumentMapper.CanMapBlockArgument(BasicBlock, int)"/>
+        /// <summary>
+        /// Returns true if the specified argument can be dropped.
+        /// This can happen when a block parameter has been replaced and does not
+        /// need specific arguments any more.
+        /// </summary>
+        /// <param name="source">The original target.</param>
+        /// <param name="target">The current target.</param>
+        /// <param name="argumentIndex">The current argument index.</param>
+        /// <returns>True, if the specified argument can be dropped.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        bool BranchTarget.IArgumentMapper.CanMapBlockArgument(BasicBlock block, int argumentIndex)
+        public bool CanMapBlockArgument(
+            BranchTarget source,
+            BranchTarget target,
+            int argumentIndex)
         {
-            foreach (var succ in block.Successors)
-            {
-                if (succ.Parameters[argumentIndex].IsReplaced)
-                    return false;
-            }
-            return true;
+            Debug.Assert(
+                blockMapping[source.TargetBlock].BasicBlock == target.TargetBlock,
+                "Incompatible target block mapping");
+            return !source.TargetBlock.Parameters[argumentIndex].IsReplaced;
         }
 
         #endregion

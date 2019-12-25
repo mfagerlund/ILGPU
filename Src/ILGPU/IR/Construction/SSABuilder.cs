@@ -368,7 +368,7 @@ namespace ILGPU.IR.Construction
                     }
 
                     // Set argument value
-                    valueContainer.Builder.AddArgument(predecessor.Block, value);
+                    valueContainer.Builder.AddArgument(Node.Block, value);
                 }
                 return TryRemoveTrivialPhi(this, incompletePhi.Phi);
             }
@@ -390,7 +390,7 @@ namespace ILGPU.IR.Construction
                 {
                     var predecessorContainer = ssaBuilder[predecessor];
                     var argument = predecessorContainer.Builder.GetArgument(
-                        predecessor.Block,
+                        valueContainer.Node.Block,
                         phiValue.Index);
                     if (same == argument || argument == phiValue)
                         continue;

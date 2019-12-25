@@ -156,12 +156,12 @@ namespace ILGPU.Backends
             /// <returns>An enumerator to enumerate all entries in this collection.</returns>
             public IEnumerator<BindingEntry> GetEnumerator()
             {
-                var arguments = Block.Arguments;
-                foreach (var successor in Block.Successors)
+                foreach (var successorTarget in Block.SuccessorTargets)
                 {
+                    var arguments = successorTarget.Nodes;
                     for (int i = 0, e = arguments.Length; i < e; ++i)
                     {
-                        var param = successor.Parameters[i];
+                        var param = successorTarget.TargetBlock.Parameters[i];
                         yield return new BindingEntry(
                             arguments[i],
                             param,
