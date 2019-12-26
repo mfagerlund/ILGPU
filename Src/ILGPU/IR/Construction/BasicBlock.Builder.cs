@@ -380,6 +380,10 @@ namespace ILGPU.IR
                 // Wire current block with new entry block
                 CreateUnconditionalBranch(rebuilder.EntryBlock.BasicBlock);
 
+                // Wire exit blocks with temp block
+                foreach (var (block, _) in exitBlocks)
+                    block.CreateUnconditionalBranch(tempBlock.BasicBlock);
+
                 // Replace call with the appropriate return value
                 if (!callTarget.IsVoid)
                 {
@@ -390,10 +394,11 @@ namespace ILGPU.IR
                     }
                     else
                     {
-                        // We require a custom block parameter
-                        var blockParameter = Parameters.AddParameter(callTarget.ReturnType);
+                        // We require a custom block parameter attached to the temp block
+                        var blockParameter = tempBlock.Parameters.AddParameter(
+                            callTarget.ReturnType);
                         foreach (var (returnBuilder, returnValue) in exitBlocks)
-                            returnBuilder.AddArgument(BasicBlock, returnValue);
+                            returnBuilder.AddArgument(tempBlock.BasicBlock, returnValue);
                         call.Replace(blockParameter);
                     }
                 }
@@ -405,10 +410,6 @@ namespace ILGPU.IR
 
                 // Unlink call node from the current block
                 Remove(call);
-
-                // Wire exit blocks with temp block
-                foreach (var (block, _) in exitBlocks)
-                    block.CreateUnconditionalBranch(tempBlock.BasicBlock);
 
                 return tempBlock;
             }
