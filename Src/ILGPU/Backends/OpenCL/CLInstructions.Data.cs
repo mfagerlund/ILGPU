@@ -304,11 +304,11 @@ namespace ILGPU.Backends.OpenCL
                 { (UnaryArithmeticKind.RsqrtF, CLUnaryCategory.Float), ("rsqrt", true) },
 
                 { (UnaryArithmeticKind.SinF, CLUnaryCategory.Float), ("sin", true) },
-                { (UnaryArithmeticKind.AsinF, CLUnaryCategory.Float), ("asin", true) },
+                { (UnaryArithmeticKind.ASinF, CLUnaryCategory.Float), ("asin", true) },
                 { (UnaryArithmeticKind.SinHF, CLUnaryCategory.Float), ("sinh", true) },
 
                 { (UnaryArithmeticKind.CosF, CLUnaryCategory.Float), ("cos", true) },
-                { (UnaryArithmeticKind.AcosF, CLUnaryCategory.Float), ("acos", true) },
+                { (UnaryArithmeticKind.ACosF, CLUnaryCategory.Float), ("acos", true) },
                 { (UnaryArithmeticKind.CosHF, CLUnaryCategory.Float), ("cosh", true) },
 
                 { (UnaryArithmeticKind.TanF, CLUnaryCategory.Float), ("tan", true) },
