@@ -63,6 +63,10 @@ namespace ILGPU.IR.Construction
             switch (value.BasicValueType)
             {
 <#          if (op.HasFloats) { #>
+                case BasicValueType.Float16:
+                    return CreatePrimitiveValue(
+                        location,
+                        <#= operation.Prefix #>value.Float16Value<#= operation.Suffix #>);
                 case BasicValueType.Float32:
                     return CreatePrimitiveValue(
                         location,
@@ -139,6 +143,8 @@ namespace ILGPU.IR.Construction
             switch (left.BasicValueType)
             {
 <#          if (op.HasFloats) { #>
+                case BasicValueType.Float16:
+                    return CreatePrimitiveValue(location, <#= operation.Prefix #>left.Float16Value<#= operation.Operation #>right.Float16Value<#= operation.Suffix #>);
                 case BasicValueType.Float32:
                     return CreatePrimitiveValue(
                         location,
