@@ -87,6 +87,7 @@ public static readonly TypeInformation[] DefaultIntTypes =
 
 public static readonly TypeInformation[] FloatTypes =
     {
+        new TypeInformation("Half", "Half", TypeInformationKind.Float, "(Half)", "f"),
         new TypeInformation("Float", "float", TypeInformationKind.Float, null, "f"),
         new TypeInformation("Double", "double", TypeInformationKind.Float),
     };
