@@ -274,6 +274,7 @@ namespace ILGPU.Backends.OpenCL
                 { ArithmeticBasicValueType.UInt32, CLUnaryCategory.Int },
                 { ArithmeticBasicValueType.UInt64, CLUnaryCategory.Int },
 
+                { ArithmeticBasicValueType.Float16, CLUnaryCategory.Float },
                 { ArithmeticBasicValueType.Float32, CLUnaryCategory.Float },
                 { ArithmeticBasicValueType.Float64, CLUnaryCategory.Float },
             };
