@@ -10,11 +10,27 @@
 // ---------------------------------------------------------------------------------------
 
 <#@ template debug="false" hostspecific="false" language="C#" #>
-<#@ include file="../../TypeInformation.tt" #>
+<#@ include file="../../Static/TypeInformation.ttinclude" #>
 <#@ assembly name="System.Core" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Collections.Generic" #>
+<#
+var fp16Ops = new (string, string, string, string)[]
+{
+    ("Unary", "Neg", "Neg", "SM_53"),
+    ("Unary", "Abs", "Abs", "SM_53"),
+    ("Unary", "IsInfF", "IsInfinity", null),
+    ("Unary", "IsNaNF", "IsNaN", null),
+
+    ("Binary", "Add", "AddFP32", "SM_53"),
+    ("Binary", "Sub", "SubFP32", "SM_53"),
+    ("Binary", "Mul", "MulFP32", "SM_53"),
+    ("Binary", "Div", "DivFP32", null),
+
+    ("Ternary", "MultiplyAdd", "FmaFP32", "SM_53"),
+};
+#>
 using ILGPU.IR.Intrinsics;
 using ILGPU.IR.Values;
 using System.Runtime.CompilerServices;
@@ -107,6 +123,26 @@ namespace ILGPU.Backends.PTX
         }
 
 <# } #>
+
+        #endregion
+
+        #region FP16
+
+        /// <summary>
+        /// Registers all FP16 intrinsics with the given manager.
+        /// </summary>
+        /// <param name="manager">The target implementation manager.</param>
+        private static void RegisterFP16(IntrinsicImplementationManager manager)
+        {
+<# foreach (var (type, kind, name, sm) in fp16Ops) { #>
+            manager.Register<#= type #>Arithmetic(
+                <#= type #>ArithmeticKind.<#= kind #>,
+                BasicValueType.Float16,
+                CreateFP16Intrinsic(
+                    nameof(HalfExtensions.<#= name #>),
+                    <#= sm != null ? $"PTXArchitecture.{sm}" : "null" #>));
+<# } #>
+        }
 
         #endregion
     }
