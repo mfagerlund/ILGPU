@@ -99,6 +99,41 @@ public sealed class CudaStream : AcceleratorStream
         return profilingMarker;
     }
 
+    /// <summary>
+    /// Begins capturing the work submitted to this stream into a
+    /// <see cref="CudaGraph"/>. Submissions made between this call and
+    /// <see cref="EndCapture"/> are recorded rather than executed. The default stream
+    /// (the NULL stream) cannot be captured; create a dedicated stream via
+    /// <see cref="Accelerator.CreateStream(AcceleratorStreamFlags)"/> to capture on.
+    /// </summary>
+    /// <param name="mode">The capture mode (see
+    /// <see cref="CudaStreamCaptureMode"/>).</param>
+    public void BeginCapture(
+        CudaStreamCaptureMode mode = CudaStreamCaptureMode.Global)
+    {
+        using var binding = Accelerator.AsNotNull().BindScoped();
+
+        CudaException.ThrowIfFailed(
+            CurrentAPI.BeginStreamCapture(_streamPtr, mode));
+    }
+
+    /// <summary>
+    /// Ends the capture started by
+    /// <see cref="BeginCapture(CudaStreamCaptureMode)"/> and returns the recorded
+    /// graph. The caller owns the returned <see cref="CudaGraph"/> and is responsible
+    /// for disposing it.
+    /// </summary>
+    /// <returns>The captured graph.</returns>
+    public CudaGraph EndCapture()
+    {
+        var accelerator = Accelerator.AsNotNull();
+        using var binding = accelerator.BindScoped();
+
+        CudaException.ThrowIfFailed(
+            CurrentAPI.EndStreamCapture(_streamPtr, out var graphPtr));
+        return new CudaGraph(accelerator, graphPtr);
+    }
+
 
     /// <summary>
     /// Allocates a pitched 2D buffer with X being the leading dimension using an
