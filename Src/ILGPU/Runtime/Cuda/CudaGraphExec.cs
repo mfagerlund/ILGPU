@@ -57,7 +57,12 @@ namespace ILGPU.Runtime.Cuda
         /// <param name="stream">The stream to launch on.</param>
         public void Launch(CudaStream stream)
         {
+#if NET6_0_OR_GREATER
             ArgumentNullException.ThrowIfNull(stream);
+#else
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+#endif
 
             using var binding = Accelerator.BindScoped();
 
