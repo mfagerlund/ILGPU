@@ -10,6 +10,7 @@
 // ---------------------------------------------------------------------------------------
 
 using ILGPUC.IR;
+using ILGPUC.IR.ModuleValues;
 using System.Collections.Generic;
 
 namespace ILGPUC.Backends.Cuda;
@@ -117,7 +118,21 @@ class CudaLanguageConfiguration : LanguageConfiguration
     }
 
     /// <inheritdoc/>
-    public override string KernelAttribute => "__global__";
+    /// <remarks>
+    /// <c>extern "C"</c> keeps the entry point's symbol unmangled so the
+    /// runtime can resolve it by name via <c>cuModuleGetFunction</c>.
+    /// </remarks>
+    public override string KernelAttribute => "extern \"C\" __global__";
+
+    // DIAG-ONLY (unbounded 1D index) — validates the parameter-layout diagnosis.
+    public override bool SkipsIndexParameter => true;
+
+    // DIAG-ONLY
+    public override string? EmitIndexComputation(
+        string typeName, string paramName, TypeValue indexType) =>
+        indexType is StructureType
+            ? null
+            : $"  {typeName} {paramName} = ({typeName})(blockIdx.x * blockDim.x + threadIdx.x);";
 
     /// <inheritdoc/>
     /// <remarks>

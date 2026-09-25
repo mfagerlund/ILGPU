@@ -163,6 +163,8 @@ public sealed class CudaAccelerator : Accelerator
             CurrentAPI.GetSharedMemoryConfig(out sharedMemoryConfiguration));
         CudaException.ThrowIfFailed(
             CurrentAPI.GetCacheConfig(out cacheConfiguration));
+
+        OnAcceleratorCreated();
     }
 
     #endregion

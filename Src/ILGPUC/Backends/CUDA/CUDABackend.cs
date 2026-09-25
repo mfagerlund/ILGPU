@@ -66,6 +66,9 @@ sealed class CudaBackend(AcceleratorArchitecture arch, CudaInstructionSet isa) :
             SourceCode = source.SourceCode,
             Target = CompilationTarget.Cuda,
             OutputType = OutputType.Binary,
+            // Without an explicit architecture nvcc emits a cubin for its own
+            // default target, which the driver refuses to load on other GPUs.
+            CudaFlags = $"-arch=sm_{arch.Major}{arch.Minor}",
         }, ct).ConfigureAwait(false);
     }
 }

@@ -1772,21 +1772,9 @@ public static partial class ArrayViewExtensions
         // Allocate the raw buffer
         var buffer = stream.Allocate1D<T>(data.Length);
 
-        // Copy the data directly to the buffer's native memory.
-        // ArrayView1D<T, Stride1D.Dense> doesn't implement IContiguousArrayView
-        // so the typed CopyFromCPU extensions don't resolve on it.
-        unsafe
-        {
-            long byteCount = (long)data.Length * Unsafe.SizeOf<T>();
-            fixed (T* src = data)
-            {
-                System.Buffer.MemoryCopy(
-                    src,
-                    buffer.NativePtr.ToPointer(),
-                    byteCount,
-                    byteCount);
-            }
-        }
+        // Copy through the accelerator: the buffer's native pointer is only
+        // host-addressable on the CPU accelerator.
+        buffer.View.CopyFromCPU(stream, data);
 
         return buffer;
     }
